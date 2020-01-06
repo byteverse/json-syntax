@@ -49,7 +49,6 @@ toBadSci :: SCI.Scientific -> Scientific
 toBadSci = SCI.withExposed
   (\a b -> scientific (fromIntegral a) b)
   (\a b -> scientific a (fromIntegral b))
-  
 
 toAesonValue :: J.Value -> AE.Value
 toAesonValue = \case
