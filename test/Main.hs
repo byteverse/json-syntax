@@ -1,7 +1,11 @@
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 
+import Data.ByteString.Short.Internal (ShortByteString(SBS))
+import Data.Bytes (Bytes)
+import Data.Primitive (ByteArray(ByteArray))
 import Data.Scientific (Scientific,scientific)
+import Data.Text.Short (ShortText)
 import Test.Tasty (defaultMain,testGroup,TestTree)
 import Test.Tasty.HUnit ((@=?))
 import Twitter100 (encodedTwitter100,byteStringTwitter100)
@@ -36,6 +40,10 @@ tests = testGroup "Tests"
       Right (J.Object (Exts.fromList [Exts.fromList [J.Member "foo" J.True, J.Member "bar" J.False]]))
       @=?
       J.decode (Bytes.fromAsciiString "{\"foo\" : true, \"bar\": false }")
+  , THU.testCase "D" $
+      Right (J.String "Smile: 😂")
+      @=?
+      J.decode (shortTextToBytes "\"Smile: 😂\"")
   , THU.testCase "Twitter100" $
       case J.decode (Bytes.fromByteArray encodedTwitter100) of
         Left _ -> fail "nope"
@@ -62,3 +70,7 @@ toAesonValue = \case
     HM.empty mbrs
   J.Array vals -> AE.Array $ Exts.fromList $ foldr
     (\x xs -> toAesonValue x : xs) [] vals
+
+shortTextToBytes :: ShortText -> Bytes
+shortTextToBytes str = case TS.toShortByteString str of
+  SBS x -> let y = ByteArray x in Bytes.fromByteArray y

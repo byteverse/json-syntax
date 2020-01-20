@@ -69,7 +69,7 @@ data Value
 
 -- | Exceptions that can happen while parsing JSON. Do not pattern
 -- match on values of this type. New data constructors may be added
--- at any time.
+-- at any time without a major version bump.
 data SyntaxException
   = EmptyInput
   | ExpectedColon
@@ -322,7 +322,16 @@ encodeUtf8Char !marr !ix !c
       PM.writeByteArray marr (ix + 2)
         (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (ord c))))
       pure (ix + 3)
-  | otherwise = error "encodeUtf8Char: write this"
+  | otherwise = do
+      PM.writeByteArray marr ix
+        (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 18 .|. 0b11110000))
+      PM.writeByteArray marr (ix + 1)
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 12))))
+      PM.writeByteArray marr (ix + 2)
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 6))))
+      PM.writeByteArray marr (ix + 3)
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (ord c))))
+      pure (ix + 4)
 
 byteArrayToShortByteString :: ByteArray -> BSS.ShortByteString
 byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
