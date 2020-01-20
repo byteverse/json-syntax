@@ -1,5 +1,5 @@
 # Revision history for json-syntax
 
-## 0.1.0.0 -- YYYY-mm-dd
+## 0.1.0.0 -- 2020-01-20
 
-* First version. Released on an unsuspecting world.
+* Initial release.
