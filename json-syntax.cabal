@@ -14,8 +14,8 @@ description:
   and typeclasses are outside the scope of this library. If anyone writes a
   library that offers users these conveniences open a issue so that the
   @json-syntax@ documentation can point users to it.
-homepage: https://github.com/andrewthad/json-syntax
-bug-reports: https://github.com/andrewthad/json-syntax/issues
+homepage: https://github.com/byteverse/json-syntax
+bug-reports: https://github.com/byteverse/json-syntax/issues
 license: BSD-3-Clause
 license-file: LICENSE
 author: Andrew Martin
