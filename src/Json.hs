@@ -1,5 +1,6 @@
 {-# language BangPatterns #-}
 {-# language BinaryLiterals #-}
+{-# language BlockArguments #-}
 {-# language DerivingStrategies #-}
 {-# language DeriveAnyClass #-}
 {-# language LambdaCase #-}
@@ -87,6 +88,7 @@ data SyntaxException
   | InvalidLeader
   | InvalidNumber
   | LeadingZero
+  | UnexpectedLeftovers
   deriving stock (Eq,Show)
   deriving anyclass (Exception)
 
@@ -114,14 +116,15 @@ isSpace w =
 
 -- | Decode a JSON syntax tree from a byte sequence.
 decode :: Bytes -> Either SyntaxException Value
-decode !bs = case P.parseBytes (P.skipWhile isSpace *> (Latin.any EmptyInput >>= parser)) bs of
-  P.Failure err -> Left err
-  -- Since parser only completes once the end of the input
-  -- has been reached, we do not need to check the length here.
-  P.Success (P.Slice _ _ cs) -> Right cs
+decode = P.parseBytesEither do
+  P.skipWhile isSpace
+  result <- Latin.any EmptyInput >>= parser
+  P.skipWhile isSpace
+  P.endOfInput UnexpectedLeftovers
+  pure result
 
 -- Precondition: skip over all space before calling this.
--- It will not skip space for you.
+-- It will not skip leading space for you. It does
 parser :: Char -> Parser SyntaxException s Value
 parser = \case
   '{' -> objectTrailedByBrace

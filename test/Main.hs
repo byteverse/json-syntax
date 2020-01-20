@@ -12,6 +12,7 @@ import Twitter100 (encodedTwitter100,byteStringTwitter100)
 
 import qualified Data.Aeson as AE
 import qualified Data.Bytes as Bytes
+import qualified Data.Chunks as Chunks
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Text.Short as TS
@@ -40,10 +41,24 @@ tests = testGroup "Tests"
       Right (J.Object (Exts.fromList [Exts.fromList [J.Member "foo" J.True, J.Member "bar" J.False]]))
       @=?
       J.decode (Bytes.fromAsciiString "{\"foo\" : true, \"bar\": false }")
-  , THU.testCase "D" $
+  , THU.testCase "E" $
       Right (J.String "Smile: 😂")
       @=?
       J.decode (shortTextToBytes "\"Smile: 😂\"")
+  , THU.testCase "F" $
+      Right (J.Array (Exts.fromList [Exts.fromList [ J.Object mempty, J.Object mempty, J.Null ]]))
+      @=?
+      J.decode (shortTextToBytes " [ {} , { } , null ] ")
+  , THU.testCase "G" $ case J.decode (shortTextToBytes " [ 55e2 , 1 ] ") of
+      Right (J.Array xs) -> case Exts.toList (Chunks.concat xs) of
+        [J.Number a, J.Number b] -> do
+          SCI.toWord32 a @=? Just 5500
+          SCI.toWord32 b @=? Just 1
+        _ -> fail "no good y"
+      _ -> fail "no good x"
+  , THU.testCase "H" $ case J.decode (shortTextToBytes " [] x") of
+      Left _ -> pure ()
+      Right _ -> fail "this was not supposed parse"
   , THU.testCase "Twitter100" $
       case J.decode (Bytes.fromByteArray encodedTwitter100) of
         Left _ -> fail "nope"
