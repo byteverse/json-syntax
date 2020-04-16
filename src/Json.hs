@@ -5,7 +5,9 @@
 {-# language DeriveAnyClass #-}
 {-# language LambdaCase #-}
 {-# language MagicHash #-}
+{-# language NamedFieldPuns #-}
 {-# language TypeApplications #-}
+{-# language UnboxedTuples #-}
 
 module Json
   ( -- * Types
@@ -14,6 +16,7 @@ module Json
   , SyntaxException(..)
     -- * Functions
   , decode
+  , encode
   ) where
 
 import Prelude hiding (Bool(True,False))
@@ -25,7 +28,7 @@ import Data.Builder.ST (Builder)
 import Data.Bytes.Parser (Parser)
 import Data.Bytes.Types (Bytes(..))
 import Data.Char (ord)
-import Data.Chunks (Chunks(ChunksNil))
+import Data.Chunks (Chunks(ChunksNil,ChunksCons))
 import Data.Number.Scientific (Scientific)
 import Data.Primitive (ByteArray,MutableByteArray)
 import Data.Text.Short (ShortText)
@@ -34,6 +37,7 @@ import GHC.Word (Word8(W8#),Word16(W16#))
 
 import qualified Prelude
 import qualified Data.Builder.ST as B
+import qualified Data.Bytes.Builder as BLDR
 import qualified Data.Bytes.Parser as P
 import qualified Data.Text.Short.Unsafe as TS
 import qualified Data.Number.Scientific as SCI
@@ -122,6 +126,70 @@ decode = P.parseBytesEither do
   P.skipWhile isSpace
   P.endOfInput UnexpectedLeftovers
   pure result
+
+encode :: Value -> BLDR.Builder
+encode = \case
+  True -> BLDR.ascii4 't' 'r' 'u' 'e'
+  False -> BLDR.ascii5 'f' 'a' 'l' 's' 'e'
+  Null -> BLDR.ascii4 'n' 'u' 'l' 'l'
+  String s -> BLDR.shortTextJsonString s
+  Number n -> SCI.builderUtf8 n
+  Array ys -> case unconsNonempty ys of
+    Nothing -> BLDR.ascii2 '[' ']'
+    Just (x,xs) ->
+      BLDR.ascii '['
+      <>
+      encode (PM.indexSmallArray x 0)
+      <>
+      foldrTail
+        ( \v b -> BLDR.ascii ',' <> encode v <> b
+        )
+        ( foldr
+          ( \v b -> BLDR.ascii ',' <> encode v <> b
+          ) (BLDR.ascii ']') xs
+        )
+        x
+  Object ys -> case unconsNonempty ys of
+    Nothing -> BLDR.ascii2 '{' '}'
+    Just (x,xs) ->
+      BLDR.ascii '{'
+      <>
+      encodeMember (PM.indexSmallArray x 0)
+      <>
+      foldrTail
+        ( \mbr b -> BLDR.ascii ',' <> encodeMember mbr <> b
+        )
+        ( foldr
+          ( \mbr b -> BLDR.ascii ',' <> encodeMember mbr <> b
+          ) (BLDR.ascii '}') xs
+        )
+        x
+
+encodeMember :: Member -> BLDR.Builder
+encodeMember Member{key,value} =
+  BLDR.shortTextJsonString key
+  <>
+  BLDR.ascii ':'
+  <>
+  encode value
+
+foldrTail :: (a -> b -> b) -> b -> PM.SmallArray a -> b
+{-# inline foldrTail #-}
+foldrTail f z !ary = go 1 where
+  !sz = PM.sizeofSmallArray ary
+  go i
+    | i == sz = z
+    | (# x #) <- PM.indexSmallArray## ary i
+    = f x (go (i+1))
+
+-- Get the first non-empty SmallArray from the Chunks.
+unconsNonempty :: Chunks a -> Maybe (PM.SmallArray a, Chunks a)
+{-# inline unconsNonempty #-}
+unconsNonempty = go where
+  go ChunksNil = Nothing
+  go (ChunksCons x xs) = case PM.sizeofSmallArray x of
+    0 -> go xs
+    _ -> Just (x,xs)
 
 -- Precondition: skip over all space before calling this.
 -- It will not skip leading space for you. It does

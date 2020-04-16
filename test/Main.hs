@@ -1,6 +1,7 @@
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
 
+import Control.Monad (when)
 import Data.ByteString.Short.Internal (ShortByteString(SBS))
 import Data.Bytes (Bytes)
 import Data.Primitive (ByteArray(ByteArray))
@@ -12,6 +13,8 @@ import Twitter100 (encodedTwitter100,byteStringTwitter100)
 
 import qualified Data.Aeson as AE
 import qualified Data.Bytes as Bytes
+import qualified Data.Bytes.Builder as Builder
+import qualified Data.Bytes.Chunks as BChunks
 import qualified Data.Chunks as Chunks
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Number.Scientific as SCI
@@ -65,7 +68,12 @@ tests = testGroup "Tests"
         Right j -> case AE.decodeStrict byteStringTwitter100 of
           Nothing -> fail "aeson is messed up"
           Just ae -> ae @=? toAesonValue j
-          
+  , THU.testCase "Twitter100-roundtrip" $
+      case J.decode (Bytes.fromByteArray encodedTwitter100) of
+        Left _ -> fail "nope, Twitter100 test will be failing too"
+        Right j -> case J.decode (BChunks.concat (Builder.run 1 (J.encode j))) of
+          Left _ -> fail "encode did not produce a document that could be decoded"
+          Right j' -> when (j /= j') (fail "document was not the same after roundtrip")
   ]
 
 toBadSci :: SCI.Scientific -> Scientific
