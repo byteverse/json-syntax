@@ -6,6 +6,7 @@
 {-# language LambdaCase #-}
 {-# language MagicHash #-}
 {-# language NamedFieldPuns #-}
+{-# language PatternSynonyms #-}
 {-# language TypeApplications #-}
 {-# language UnboxedTuples #-}
 
@@ -17,6 +18,8 @@ module Json
     -- * Functions
   , decode
   , encode
+    -- * Infix Synonyms 
+  , pattern (:->)
   ) where
 
 import Prelude hiding (Bool(True,False))
@@ -127,6 +130,7 @@ decode = P.parseBytesEither do
   P.endOfInput UnexpectedLeftovers
   pure result
 
+-- | Encode a JSON syntax tree.
 encode :: Value -> BLDR.Builder
 encode = \case
   True -> BLDR.ascii4 't' 'r' 'u' 'e'
@@ -410,3 +414,7 @@ byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
 -- Precondition: Not in the range [U+D800 .. U+DFFF]
 w16ToChar :: Word16 -> Char
 w16ToChar (W16# w) = C# (chr# (word2Int# w))
+
+-- | Infix pattern synonym for 'Member'.
+pattern (:->) :: ShortText -> Value -> Member
+pattern key :-> value = Member{key,value}
