@@ -8,6 +8,7 @@
 {-# language NamedFieldPuns #-}
 {-# language PatternSynonyms #-}
 {-# language TypeApplications #-}
+{-# language UnboxedSums #-}
 {-# language UnboxedTuples #-}
 
 module Json
@@ -20,6 +21,15 @@ module Json
   , encode
     -- * Infix Synonyms 
   , pattern (:->)
+    -- * Construction
+  , object1
+  , object2
+  , object3
+  , object4
+  , object5
+  , object6
+  , object7
+  , object8
   ) where
 
 import Prelude hiding (Bool(True,False))
@@ -35,13 +45,15 @@ import Data.Chunks (Chunks(ChunksNil,ChunksCons))
 import Data.Number.Scientific (Scientific)
 import Data.Primitive (ByteArray,MutableByteArray)
 import Data.Text.Short (ShortText)
-import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
+import GHC.Exts (SmallArray#,Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
+import GHC.Exts (sizeofSmallArray#,indexSmallArray#)
 import GHC.Word (Word8(W8#),Word16(W16#))
 
 import qualified Prelude
 import qualified Data.Builder.ST as B
 import qualified Data.Bytes.Builder as BLDR
 import qualified Data.Bytes.Parser as P
+import qualified Data.Chunks as Chunks
 import qualified Data.Text.Short.Unsafe as TS
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Primitive as PM
@@ -139,11 +151,11 @@ encode = \case
   String s -> BLDR.shortTextJsonString s
   Number n -> SCI.builderUtf8 n
   Array ys -> case unconsNonempty ys of
-    Nothing -> BLDR.ascii2 '[' ']'
-    Just (x,xs) ->
+    (# (# #) | #) -> BLDR.ascii2 '[' ']'
+    (# | (# x, xs #) #) ->
       BLDR.ascii '['
       <>
-      encode (PM.indexSmallArray x 0)
+      encode (case indexSmallArray# x 0# of {(# z #) -> z})
       <>
       foldrTail
         ( \v b -> BLDR.ascii ',' <> encode v <> b
@@ -152,13 +164,13 @@ encode = \case
           ( \v b -> BLDR.ascii ',' <> encode v <> b
           ) (BLDR.ascii ']') xs
         )
-        x
+        (PM.SmallArray x)
   Object ys -> case unconsNonempty ys of
-    Nothing -> BLDR.ascii2 '{' '}'
-    Just (x,xs) ->
+    (# (# #) | #) -> BLDR.ascii2 '{' '}'
+    (# | (# x,xs #) #) ->
       BLDR.ascii '{'
       <>
-      encodeMember (PM.indexSmallArray x 0)
+      encodeMember (case indexSmallArray# x 0# of {(# z #) -> z})
       <>
       foldrTail
         ( \mbr b -> BLDR.ascii ',' <> encodeMember mbr <> b
@@ -167,7 +179,7 @@ encode = \case
           ( \mbr b -> BLDR.ascii ',' <> encodeMember mbr <> b
           ) (BLDR.ascii '}') xs
         )
-        x
+        (PM.SmallArray x)
 
 encodeMember :: Member -> BLDR.Builder
 encodeMember Member{key,value} =
@@ -187,13 +199,13 @@ foldrTail f z !ary = go 1 where
     = f x (go (i+1))
 
 -- Get the first non-empty SmallArray from the Chunks.
-unconsNonempty :: Chunks a -> Maybe (PM.SmallArray a, Chunks a)
+unconsNonempty :: Chunks a -> (# (# #) | (# SmallArray# a, Chunks a #) #)
 {-# inline unconsNonempty #-}
 unconsNonempty = go where
-  go ChunksNil = Nothing
-  go (ChunksCons x xs) = case PM.sizeofSmallArray x of
-    0 -> go xs
-    _ -> Just (x,xs)
+  go ChunksNil = (# (# #) | #)
+  go (ChunksCons (PM.SmallArray x) xs) = case sizeofSmallArray# x of
+    0# -> go xs
+    _ -> (# | (# x, xs #) #)
 
 -- Precondition: skip over all space before calling this.
 -- It will not skip leading space for you. It does
@@ -418,3 +430,43 @@ w16ToChar (W16# w) = C# (chr# (word2Int# w))
 -- | Infix pattern synonym for 'Member'.
 pattern (:->) :: ShortText -> Value -> Member
 pattern key :-> value = Member{key,value}
+
+-- | Construct a JSON object with one member.
+object1 :: Member -> Value
+{-# inline object1 #-}
+object1 a = Object (Chunks.singleton a)
+
+-- | Construct a JSON object with two members.
+object2 :: Member -> Member -> Value
+{-# inline object2 #-}
+object2 a b = Object (Chunks.doubleton a b)
+
+-- | Construct a JSON object with three members.
+object3 :: Member -> Member -> Member -> Value
+{-# inline object3 #-}
+object3 a b c = Object (Chunks.tripleton a b c)
+
+-- | Construct a JSON object with four members.
+object4 :: Member -> Member -> Member -> Member -> Value
+{-# inline object4 #-}
+object4 a b c d = Object (Chunks.quadrupleton a b c d)
+
+-- | Construct a JSON object with five members.
+object5 :: Member -> Member -> Member -> Member -> Member -> Value
+{-# inline object5 #-}
+object5 a b c d e = Object (Chunks.quintupleton a b c d e)
+
+-- | Construct a JSON object with six members.
+object6 :: Member -> Member -> Member -> Member -> Member -> Member -> Value
+{-# inline object6 #-}
+object6 a b c d e f = Object (Chunks.sextupleton a b c d e f)
+
+-- | Construct a JSON object with seven members.
+object7 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Value
+{-# inline object7 #-}
+object7 a b c d e f g = Object (Chunks.septupleton a b c d e f g)
+
+-- | Construct a JSON object with eight members.
+object8 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member -> Value
+{-# inline object8 #-}
+object8 a b c d e f g h = Object (Chunks.octupleton a b c d e f g h)
