@@ -1,8 +1,9 @@
 # Revision history for json-syntax
 
-## 0.1.2.0 -- 2020-??-??
+## 0.1.2.0 -- 2020-11-18
 
 * Add infix pattern synonym for `Member`.
+* Add `object(1|2|3|4|5|6|7|8)` as convenience helpers for construction.
 
 ## 0.1.1.0 -- 2020-05-01
 
