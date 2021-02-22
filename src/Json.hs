@@ -127,6 +127,7 @@ emptyObjectValue :: Value
 emptyObjectValue = Object ChunksNil
 
 isSpace :: Word8 -> Prelude.Bool
+{-# inline isSpace #-}
 isSpace w =
      w == c2w ' '
   || w == c2w '\t'
@@ -234,6 +235,7 @@ parser = \case
   _ -> P.fail InvalidLeader
 
 objectTrailedByBrace :: Parser SyntaxException s Value
+{-# inline objectTrailedByBrace #-}
 objectTrailedByBrace = do
   P.skipWhile isSpace
   Latin.any IncompleteObject >>= \case
@@ -280,6 +282,7 @@ objectStep !b = do
 --
 -- This parser handles everything after the LBRACKET character.
 arrayTrailedByBracket :: Parser SyntaxException s Value
+{-# inline arrayTrailedByBracket #-}
 arrayTrailedByBracket = do
   P.skipWhile isSpace
   Latin.any IncompleteArray >>= \case

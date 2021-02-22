@@ -4,6 +4,7 @@
 import Control.Monad (when)
 import Data.ByteString.Short.Internal (ShortByteString(SBS))
 import Data.Bytes (Bytes)
+import Data.Chunks (Chunks(ChunksCons,ChunksNil))
 import Data.Primitive (ByteArray(ByteArray))
 import Data.Scientific (Scientific,scientific)
 import Data.Text.Short (ShortText)
@@ -62,6 +63,14 @@ tests = testGroup "Tests"
   , THU.testCase "H" $ case J.decode (shortTextToBytes " [] x") of
       Left _ -> pure ()
       Right _ -> fail "this was not supposed parse"
+  , THU.testCase "I" $
+      BChunks.concat (Builder.run 1 (J.encode (J.Array (ChunksCons mempty ChunksNil))))
+      @=?
+      Bytes.fromLatinString "[]"
+  , THU.testCase "J" $
+      BChunks.concat (Builder.run 1 (J.encode (J.Array ChunksNil)))
+      @=?
+      Bytes.fromLatinString "[]"
   , THU.testCase "Twitter100" $
       case J.decode (Bytes.fromByteArray encodedTwitter100) of
         Left _ -> fail "nope"
