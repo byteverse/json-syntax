@@ -30,6 +30,10 @@ module Json
   , object6
   , object7
   , object8
+  , object9
+  , object10
+  , object11
+  , object12
   ) where
 
 import Prelude hiding (Bool(True,False))
@@ -469,7 +473,31 @@ object7 :: Member -> Member -> Member -> Member -> Member -> Member -> Member ->
 {-# inline object7 #-}
 object7 a b c d e f g = Object (Chunks.septupleton a b c d e f g)
 
--- | Construct a JSON object with eight members.
+-- | Construct a JSON object with nine members.
 object8 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member -> Value
 {-# inline object8 #-}
 object8 a b c d e f g h = Object (Chunks.octupleton a b c d e f g h)
+
+-- | Construct a JSON object with nine members.
+object9 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
+        -> Value
+{-# inline object9 #-}
+object9 a b c d e f g h i = Object (Chunks.nonupleton a b c d e f g h i)
+
+-- | Construct a JSON object with ten members.
+object10 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member 
+         -> Member -> Member -> Value
+{-# inline object10 #-}
+object10 a b c d e f g h i j = Object (Chunks.decupleton a b c d e f g h i j)
+
+-- | Construct a JSON object with eleven members.
+object11 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
+         -> Member -> Member -> Member -> Value
+{-# inline object11 #-}
+object11 a b c d e f g h i j k = Object (Chunks.undecupleton a b c d e f g h i j k)
+
+-- | Construct a JSON object with eleven members.
+object12 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
+         -> Member -> Member -> Member -> Member -> Value
+{-# inline object12 #-}
+object12 a b c d e f g h i j k l = Object (Chunks.duodecupleton a b c d e f g h i j k l)
