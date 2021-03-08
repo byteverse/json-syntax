@@ -5,6 +5,7 @@
 * Switch from `Chunks` to `SmallArray` in the `Object` and `Array` data
   constructors. This makes the library simpler to use but it a breaking
   change.
+* Expose `emptyArray` and `emptyObject`.
 * Add `object(9|10|11|12)` as convenience helpers for construction.
 
 ## 0.1.2.0 -- 2020-11-18

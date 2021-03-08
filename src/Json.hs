@@ -21,6 +21,9 @@ module Json
   , encode
     -- * Infix Synonyms 
   , pattern (:->)
+    -- * Constants
+  , emptyArray
+  , emptyObject
     -- * Construction
   , object1
   , object2
@@ -121,13 +124,15 @@ data Member = Member
   , value :: !Value
   } deriving stock (Eq,Show)
 
-emptyArrayValue :: Value
-{-# noinline emptyArrayValue #-}
-emptyArrayValue = Array mempty
+-- | An array with no elements (i.e. @[]@)
+emptyArray :: Value
+{-# noinline emptyArray #-}
+emptyArray = Array mempty
 
-emptyObjectValue :: Value
-{-# noinline emptyObjectValue #-}
-emptyObjectValue = Object mempty
+-- | An object with no members (i.e. @{}@)
+emptyObject :: Value
+{-# noinline emptyObject #-}
+emptyObject = Object mempty
 
 isSpace :: Word8 -> Prelude.Bool
 {-# inline isSpace #-}
@@ -225,7 +230,7 @@ objectTrailedByBrace :: Parser SyntaxException s Value
 objectTrailedByBrace = do
   P.skipWhile isSpace
   Latin.any IncompleteObject >>= \case
-    '}' -> pure emptyObjectValue
+    '}' -> pure emptyObject
     '"' -> do
       start <- Unsafe.cursor
       !theKey <- string id start
@@ -273,7 +278,7 @@ arrayTrailedByBracket :: Parser SyntaxException s Value
 arrayTrailedByBracket = do
   P.skipWhile isSpace
   Latin.any IncompleteArray >>= \case
-    ']' -> pure emptyArrayValue
+    ']' -> pure emptyArray
     c -> do
       !b0 <- P.effect B.new
       val <- parser c
