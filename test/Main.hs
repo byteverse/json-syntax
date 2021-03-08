@@ -34,15 +34,15 @@ tests = testGroup "Tests"
       @=?
       J.decode (Bytes.fromAsciiString "{}")
   , THU.testCase "B" $
-      Right (J.Object (Exts.fromList [Exts.fromList [J.Member "foo" J.True]]))
+      Right (J.Object (Exts.fromList [J.Member "foo" J.True]))
       @=?
       J.decode (Bytes.fromAsciiString "{\"foo\" : true}")
   , THU.testCase "C" $
-      Right (J.Array (Exts.fromList [Exts.fromList [J.String "bar"]]))
+      Right (J.Array (Exts.fromList [J.String "bar"]))
       @=?
       J.decode (Bytes.fromAsciiString "[\"bar\"]")
   , THU.testCase "D" $
-      Right (J.Object (Exts.fromList [Exts.fromList [J.Member "foo" J.True, J.Member "bar" J.False]]))
+      Right (J.Object (Exts.fromList [J.Member "foo" J.True, J.Member "bar" J.False]))
       @=?
       J.decode (Bytes.fromAsciiString "{\"foo\" : true, \"bar\": false }")
   , THU.testCase "E" $
@@ -50,11 +50,11 @@ tests = testGroup "Tests"
       @=?
       J.decode (shortTextToBytes "\"Smile: 😂\"")
   , THU.testCase "F" $
-      Right (J.Array (Exts.fromList [Exts.fromList [ J.Object mempty, J.Object mempty, J.Null ]]))
+      Right (J.Array (Exts.fromList [ J.Object mempty, J.Object mempty, J.Null ]))
       @=?
       J.decode (shortTextToBytes " [ {} , { } , null ] ")
   , THU.testCase "G" $ case J.decode (shortTextToBytes " [ 55e2 , 1 ] ") of
-      Right (J.Array xs) -> case Exts.toList (Chunks.concat xs) of
+      Right (J.Array xs) -> case Exts.toList xs of
         [J.Number a, J.Number b] -> do
           SCI.toWord32 a @=? Just 5500
           SCI.toWord32 b @=? Just 1
@@ -64,11 +64,11 @@ tests = testGroup "Tests"
       Left _ -> pure ()
       Right _ -> fail "this was not supposed parse"
   , THU.testCase "I" $
-      BChunks.concat (Builder.run 1 (J.encode (J.Array (ChunksCons mempty ChunksNil))))
+      BChunks.concat (Builder.run 1 (J.encode (J.Array mempty)))
       @=?
       Bytes.fromLatinString "[]"
   , THU.testCase "J" $
-      BChunks.concat (Builder.run 1 (J.encode (J.Array ChunksNil)))
+      BChunks.concat (Builder.run 1 (J.encode (J.Array mempty)))
       @=?
       Bytes.fromLatinString "[]"
   , THU.testCase "Twitter100" $

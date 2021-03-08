@@ -40,17 +40,16 @@ import Prelude hiding (Bool(True,False))
 
 import Control.Exception (Exception)
 import Control.Monad.ST (ST)
+import Control.Monad.ST.Run (runSmallArrayST)
 import Data.Bits ((.&.),(.|.),unsafeShiftR)
 import Data.Builder.ST (Builder)
 import Data.Bytes.Parser (Parser)
 import Data.Bytes.Types (Bytes(..))
 import Data.Char (ord)
-import Data.Chunks (Chunks(ChunksNil,ChunksCons))
 import Data.Number.Scientific (Scientific)
-import Data.Primitive (ByteArray,MutableByteArray)
+import Data.Primitive (ByteArray,MutableByteArray,SmallArray)
 import Data.Text.Short (ShortText)
-import GHC.Exts (SmallArray#,Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
-import GHC.Exts (sizeofSmallArray#,indexSmallArray#)
+import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
 import GHC.Word (Word8(W8#),Word16(W16#))
 
 import qualified Prelude
@@ -82,8 +81,8 @@ import qualified Data.Bytes.Parser.Unsafe as Unsafe
 --   there are functions in @Data.Chunks@ that efficently perform other
 --   operations.
 data Value
-  = Object !(Chunks Member)
-  | Array !(Chunks Value)
+  = Object !(SmallArray Member)
+  | Array !(SmallArray Value)
   | String {-# UNPACK #-} !ShortText
   | Number {-# UNPACK #-} !Scientific
   | Null
@@ -124,11 +123,11 @@ data Member = Member
 
 emptyArrayValue :: Value
 {-# noinline emptyArrayValue #-}
-emptyArrayValue = Array ChunksNil
+emptyArrayValue = Array mempty
 
 emptyObjectValue :: Value
 {-# noinline emptyObjectValue #-}
-emptyObjectValue = Object ChunksNil
+emptyObjectValue = Object mempty
 
 isSpace :: Word8 -> Prelude.Bool
 {-# inline isSpace #-}
@@ -155,36 +154,28 @@ encode = \case
   Null -> BLDR.ascii4 'n' 'u' 'l' 'l'
   String s -> BLDR.shortTextJsonString s
   Number n -> SCI.builderUtf8 n
-  Array ys -> case unconsNonempty ys of
-    (# (# #) | #) -> BLDR.ascii2 '[' ']'
-    (# | (# x, xs #) #) ->
-      BLDR.ascii '['
-      <>
-      encode (case indexSmallArray# x 0# of {(# z #) -> z})
-      <>
-      foldrTail
-        ( \v b -> BLDR.ascii ',' <> encode v <> b
-        )
-        ( foldr
-          ( \v b -> BLDR.ascii ',' <> encode v <> b
-          ) (BLDR.ascii ']') xs
-        )
-        (PM.SmallArray x)
-  Object ys -> case unconsNonempty ys of
-    (# (# #) | #) -> BLDR.ascii2 '{' '}'
-    (# | (# x,xs #) #) ->
-      BLDR.ascii '{'
-      <>
-      encodeMember (case indexSmallArray# x 0# of {(# z #) -> z})
-      <>
-      foldrTail
-        ( \mbr b -> BLDR.ascii ',' <> encodeMember mbr <> b
-        )
-        ( foldr
-          ( \mbr b -> BLDR.ascii ',' <> encodeMember mbr <> b
-          ) (BLDR.ascii '}') xs
-        )
-        (PM.SmallArray x)
+  Array ys -> case PM.sizeofSmallArray ys of
+    0 -> BLDR.ascii2 '[' ']'
+    _ ->
+      let !(# z #) = PM.indexSmallArray## ys 0
+       in BLDR.ascii '['
+          <>
+          encode z
+          <>
+          foldrTail
+            ( \v b -> BLDR.ascii ',' <> encode v <> b
+            ) (BLDR.ascii ']') ys
+  Object ys -> case PM.sizeofSmallArray ys of
+    0 -> BLDR.ascii2 '{' '}'
+    _ ->
+      let !(# z #) = PM.indexSmallArray## ys 0
+       in BLDR.ascii '{'
+          <>
+          encodeMember z
+          <>
+          foldrTail
+            ( \v b -> BLDR.ascii ',' <> encodeMember v <> b
+            ) (BLDR.ascii '}') ys
 
 encodeMember :: Member -> BLDR.Builder
 encodeMember Member{key,value} =
@@ -202,15 +193,6 @@ foldrTail f z !ary = go 1 where
     | i == sz = z
     | (# x #) <- PM.indexSmallArray## ary i
     = f x (go (i+1))
-
--- Get the first non-empty SmallArray from the Chunks.
-unconsNonempty :: Chunks a -> (# (# #) | (# SmallArray# a, Chunks a #) #)
-{-# inline unconsNonempty #-}
-unconsNonempty = go where
-  go ChunksNil = (# (# #) | #)
-  go (ChunksCons (PM.SmallArray x) xs) = case sizeofSmallArray# x of
-    0# -> go xs
-    _ -> (# | (# x, xs #) #)
 
 -- Precondition: skip over all space before calling this.
 -- It will not skip leading space for you. It does
@@ -274,7 +256,8 @@ objectStep !b = do
       P.effect (B.push mbr b) >>= objectStep
     '}' -> do
       !r <- P.effect (B.freeze b)
-      pure (Object r)
+      let !arr = Chunks.concat r
+      pure (Object arr)
     _ -> P.fail ExpectedCommaOrRightBracket
 
 -- This eats all the space at the front of the input. There
@@ -315,7 +298,8 @@ arrayStep !b = do
       P.effect (B.push val b) >>= arrayStep
     ']' -> do
       !r <- P.effect (B.freeze b)
-      pure (Array r)
+      let !arr = Chunks.concat r
+      pure (Array arr)
     _ -> P.fail ExpectedCommaOrRightBracket
 
 c2w :: Char -> Word8
@@ -441,63 +425,153 @@ pattern key :-> value = Member{key,value}
 -- | Construct a JSON object with one member.
 object1 :: Member -> Value
 {-# inline object1 #-}
-object1 a = Object (Chunks.singleton a)
+object1 a = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 1 a
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with two members.
 object2 :: Member -> Member -> Value
 {-# inline object2 #-}
-object2 a b = Object (Chunks.doubleton a b)
+object2 a b = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 2 a
+  PM.writeSmallArray dst 1 b
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with three members.
 object3 :: Member -> Member -> Member -> Value
 {-# inline object3 #-}
-object3 a b c = Object (Chunks.tripleton a b c)
+object3 a b c = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 3 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with four members.
 object4 :: Member -> Member -> Member -> Member -> Value
 {-# inline object4 #-}
-object4 a b c d = Object (Chunks.quadrupleton a b c d)
+object4 a b c d = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 4 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with five members.
 object5 :: Member -> Member -> Member -> Member -> Member -> Value
 {-# inline object5 #-}
-object5 a b c d e = Object (Chunks.quintupleton a b c d e)
+object5 a b c d e = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 5 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with six members.
 object6 :: Member -> Member -> Member -> Member -> Member -> Member -> Value
 {-# inline object6 #-}
-object6 a b c d e f = Object (Chunks.sextupleton a b c d e f)
+object6 a b c d e f = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 6 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with seven members.
 object7 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Value
 {-# inline object7 #-}
-object7 a b c d e f g = Object (Chunks.septupleton a b c d e f g)
+object7 a b c d e f g = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 7 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with nine members.
 object8 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member -> Value
 {-# inline object8 #-}
-object8 a b c d e f g h = Object (Chunks.octupleton a b c d e f g h)
+object8 a b c d e f g h = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 8 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with nine members.
 object9 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
         -> Value
 {-# inline object9 #-}
-object9 a b c d e f g h i = Object (Chunks.nonupleton a b c d e f g h i)
+object9 a b c d e f g h i = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 9 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.writeSmallArray dst 8 i
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with ten members.
 object10 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member 
          -> Member -> Member -> Value
 {-# inline object10 #-}
-object10 a b c d e f g h i j = Object (Chunks.decupleton a b c d e f g h i j)
+object10 a b c d e f g h i j = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 10 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.writeSmallArray dst 8 i
+  PM.writeSmallArray dst 9 j
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with eleven members.
 object11 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
          -> Member -> Member -> Member -> Value
 {-# inline object11 #-}
-object11 a b c d e f g h i j k = Object (Chunks.undecupleton a b c d e f g h i j k)
+object11 a b c d e f g h i j k = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 11 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.writeSmallArray dst 8 i
+  PM.writeSmallArray dst 9 j
+  PM.writeSmallArray dst 10 k
+  PM.unsafeFreezeSmallArray dst
 
 -- | Construct a JSON object with eleven members.
 object12 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
          -> Member -> Member -> Member -> Member -> Value
 {-# inline object12 #-}
-object12 a b c d e f g h i j k l = Object (Chunks.duodecupleton a b c d e f g h i j k l)
+object12 a b c d e f g h i j k l = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 12 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.writeSmallArray dst 8 i
+  PM.writeSmallArray dst 9 j
+  PM.writeSmallArray dst 10 k
+  PM.writeSmallArray dst 11 l
+  PM.unsafeFreezeSmallArray dst
