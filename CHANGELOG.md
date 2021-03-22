@@ -1,6 +1,6 @@
 # Revision history for json-syntax
 
-## 0.2.0.0 -- 2021-??-??
+## 0.2.0.0 -- 2021-03-22
 
 * Switch from `Chunks` to `SmallArray` in the `Object` and `Array` data
   constructors. This makes the library simpler to use but it a breaking
