@@ -4,7 +4,6 @@
 import Control.Monad (when)
 import Data.ByteString.Short.Internal (ShortByteString(SBS))
 import Data.Bytes (Bytes)
-import Data.Chunks (Chunks(ChunksCons,ChunksNil))
 import Data.Primitive (ByteArray(ByteArray))
 import Data.Scientific (Scientific,scientific)
 import Data.Text.Short (ShortText)
@@ -16,7 +15,6 @@ import qualified Data.Aeson as AE
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Builder as Builder
 import qualified Data.Bytes.Chunks as BChunks
-import qualified Data.Chunks as Chunks
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Text.Short as TS
@@ -71,6 +69,14 @@ tests = testGroup "Tests"
       BChunks.concat (Builder.run 1 (J.encode (J.Array mempty)))
       @=?
       Bytes.fromLatinString "[]"
+  , THU.testCase "K" $
+      BChunks.concat (Builder.run 1 (J.encode (J.String "Hello\DELWorld")))
+      @=?
+      Bytes.fromLatinString "\"Hello\DELWorld\""
+  , THU.testCase "L" $
+      BChunks.concat (Builder.run 1 (J.encode (J.String "Hello\nWorld")))
+      @=?
+      Bytes.fromLatinString "\"Hello\\nWorld\""
   , THU.testCase "Twitter100" $
       case J.decode (Bytes.fromByteArray encodedTwitter100) of
         Left _ -> fail "nope"
