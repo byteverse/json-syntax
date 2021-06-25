@@ -1,11 +1,13 @@
 {-# language LambdaCase #-}
 {-# language OverloadedStrings #-}
+{-# language ScopedTypeVariables #-}
 
 import Control.Monad (when)
 import Data.ByteString.Short.Internal (ShortByteString(SBS))
 import Data.Bytes (Bytes)
 import Data.Primitive (ByteArray(ByteArray))
 import Data.Scientific (Scientific,scientific)
+import Test.QuickCheck ((===))
 import Data.Text.Short (ShortText)
 import Test.Tasty (defaultMain,testGroup,TestTree)
 import Test.Tasty.HUnit ((@=?))
@@ -20,7 +22,9 @@ import qualified Data.Number.Scientific as SCI
 import qualified Data.Text.Short as TS
 import qualified GHC.Exts as Exts
 import qualified Json as J
+import qualified Test.QuickCheck as QC
 import qualified Test.Tasty.HUnit as THU
+import qualified Test.Tasty.QuickCheck as TQC
 
 main :: IO ()
 main = defaultMain tests
@@ -77,6 +81,26 @@ tests = testGroup "Tests"
       BChunks.concat (Builder.run 1 (J.encode (J.String "Hello\nWorld")))
       @=?
       Bytes.fromLatinString "\"Hello\\nWorld\""
+  , TQC.testProperty "M" $ QC.forAll (jsonFromPrintableStrings <$> QC.vectorOf 10 QC.arbitrary) $ \val0 -> do
+      let enc = BChunks.concat (Builder.run 128 (J.encode val0))
+      case J.decode enc of
+        Left _ -> QC.property False
+        Right val1 -> val0 === val1
+  , TQC.testProperty "N" $ QC.forAll (jsonFromPrintableStrings <$> QC.vectorOf 400 QC.arbitrary) $ \val0 -> do
+      let enc = BChunks.concat (Builder.run 128 (J.encode val0))
+      case J.decode enc of
+        Left e -> QC.counterexample (show e) False
+        Right val1 -> val0 === val1
+  , TQC.testProperty "O" $ QC.forAll (jsonFromAsciiStrings <$> QC.vectorOf 10 QC.arbitrary) $ \val0 -> do
+      let enc = BChunks.concat (Builder.run 128 (J.encode val0))
+      case J.decode enc of
+        Left _ -> QC.property False
+        Right val1 -> val0 === val1
+  , TQC.testProperty "P" $ QC.forAll (jsonFromAsciiStrings <$> QC.vectorOf 400 QC.arbitrary) $ \val0 -> do
+      let enc = BChunks.concat (Builder.run 128 (J.encode val0))
+      case J.decode enc of
+        Left e -> QC.counterexample (show e) False
+        Right val1 -> val0 === val1
   , THU.testCase "Twitter100" $
       case J.decode (Bytes.fromByteArray encodedTwitter100) of
         Left _ -> fail "nope"
@@ -90,6 +114,12 @@ tests = testGroup "Tests"
           Left _ -> fail "encode did not produce a document that could be decoded"
           Right j' -> when (j /= j') (fail "document was not the same after roundtrip")
   ]
+
+jsonFromPrintableStrings :: [QC.PrintableString] -> J.Value
+jsonFromPrintableStrings xs = J.Array (Exts.fromList (map (J.String . TS.pack . QC.getPrintableString) xs))
+
+jsonFromAsciiStrings :: [QC.ASCIIString] -> J.Value
+jsonFromAsciiStrings xs = J.Array (Exts.fromList (map (J.String . TS.pack . QC.getASCIIString) xs))
 
 toBadSci :: SCI.Scientific -> Scientific
 toBadSci = SCI.withExposed
