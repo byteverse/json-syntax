@@ -92,3 +92,4 @@ benchmark bench
   main-is: Main.hs
   other-modules:
     Twitter100
+    Url100

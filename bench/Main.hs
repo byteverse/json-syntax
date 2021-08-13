@@ -5,6 +5,7 @@
 import Gauge.Main (defaultMain,bgroup,bench,whnf)
 
 import Twitter100 (encodedTwitter100,byteStringTwitter100)
+import Url100 (encodedUrl100,byteStringUrl100)
 
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Builder as BLDR
@@ -33,6 +34,13 @@ main = do
               valueTwitter100
           ]
         ]
+      , bgroup "url"
+        [ bgroup "100"
+          [ bench "decode" $ whnf
+              (\b -> J.decode (Bytes.fromByteArray b))
+              encodedUrl100
+          ]
+        ]
       ]
     , bgroup "aeson"
       [ bgroup "twitter"
@@ -42,6 +50,11 @@ main = do
           , bench "encode" $ whnf
               (\v -> LBS.length (Aeson.encode v))
               aesonValueTwitter100
+          ]
+        ]
+      , bgroup "url"
+        [ bgroup "100"
+          [ bench "decode" (whnf (Aeson.decodeStrict' @Aeson.Value) byteStringUrl100)
           ]
         ]
       ]
