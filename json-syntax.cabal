@@ -40,7 +40,7 @@ library
     , run-st >=0.1.1 && <0.2
     , scientific-notation >=0.1.2 && <0.2
     , text-short >=0.1.3 && <0.2
-  hs-source-dirs: src
+  hs-source-dirs: src, common
   default-language: Haskell2010
   ghc-options: -Wall -O2
 
@@ -50,6 +50,7 @@ test-suite test
   hs-source-dirs: test, common
   main-is: Main.hs
   other-modules:
+    Json.Internal.String
     Twitter100
   ghc-options: -Wall -O2
   build-depends:
@@ -59,6 +60,7 @@ test-suite test
     , base >=4.12.0.0 && <5
     , bytebuild
     , byteslice >=0.1.3
+    , bytesmith
     , bytestring
     , json-syntax
     , neat-interpolation >=0.3.2
