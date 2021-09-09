@@ -61,10 +61,10 @@ advance bs0 = loop bs0 YesMemcpy
 
 newtype CanMemcpy = CanMemcpy Int
 
-pattern YesMemcpy :: CanMemcpy 
+pattern YesMemcpy :: CanMemcpy
 pattern YesMemcpy = CanMemcpy 1
 
-pattern NoMemcpy :: CanMemcpy 
+pattern NoMemcpy :: CanMemcpy
 pattern NoMemcpy = CanMemcpy 0
 
 data Result
@@ -108,8 +108,8 @@ advWords bs0 canMemcpy0 = Continue canMemcpy0 (loop bs0)
 canAdvWord :: Word64 -> Bool
 {-# inline canAdvWord #-}
 canAdvWord w
-   = hasLess 32 w .|. hasMore 126 w == 0 -- is ascii and not a control character (incl. delete)
-  && hasValueAscii 92 w .|. hasValueAscii 34 w == 0 -- backslash and double-quote resp.
+   = (hasLess 32 w .|. hasMore 126 w == 0) -- is ascii and not a control character (incl. delete)
+  .&. (hasValueAscii 92 w .|. hasValueAscii 34 w == 0) -- backslash and double-quote resp.
 
 
 ------ JSON String Parser ------
