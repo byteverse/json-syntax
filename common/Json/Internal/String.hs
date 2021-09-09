@@ -1,11 +1,15 @@
-{-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
-{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UnboxedSums #-}
+{-# LANGUAGE UnboxedTuples #-}
+{-# LANGUAGE UnliftedNewtypes #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Json.Internal.String
   ( advance
@@ -28,13 +32,13 @@ import Control.Monad.ST (ST)
 import Data.Bits (complement, (.&.), (.|.), xor)
 import Data.Bits (unsafeShiftR)
 import Data.Bytes (Bytes)
-import Data.Bytes.Types (Bytes(..))
+import Data.Bytes.Types (Bytes(..),Bytes#)
 import Data.Char (ord)
 import Data.Primitive (ByteArray,MutableByteArray)
 import Data.Primitive.ByteArray (indexByteArray)
 import Data.Text.Short (ShortText)
 import Data.Word (Word8, Word16, Word64)
-import GHC.Exts (Char(C#),word2Int#,chr#)
+import GHC.Exts (Int#,Int(I#),Char(C#),word2Int#,chr#)
 import GHC.Word (Word16(W16#))
 
 import qualified Data.Bytes as Bytes
@@ -46,26 +50,40 @@ import qualified Data.Primitive as PM
 import qualified Data.Text.Short.Unsafe as TS
 
 
+unboxInt :: Int -> Int#
+unboxInt (I# i) = i
+
 advance :: Bytes -> Result
 {-# inline advance #-}
-advance bs0 = loop bs0 YesMemcpy
+advance bs0 = boxResult (loop (Bytes.unlift bs0) YesMemcpy#)
   where
   loop bs canMemcpy = case advAlign bs canMemcpy of
-    Continue canMemcpy' bs' -> case advWords bs' canMemcpy' of
-      Continue canMemcpy'' bs'' -> case advChar bs'' canMemcpy'' of
-        Continue canMemcpy''' bs''' -> loop bs''' canMemcpy'''
+    Continue# canMemcpy' bs' -> case advWords bs' canMemcpy' of
+      Continue# canMemcpy'' bs'' -> case advChar bs'' canMemcpy'' of
+        Continue# canMemcpy''' bs''' -> loop bs''' canMemcpy'''
         res -> res
       res -> res
     res -> res
 
 
 newtype CanMemcpy = CanMemcpy Int
-
+{-# COMPLETE YesMemcpy, NoMemcpy #-}
 pattern YesMemcpy :: CanMemcpy
 pattern YesMemcpy = CanMemcpy 1
-
 pattern NoMemcpy :: CanMemcpy
 pattern NoMemcpy = CanMemcpy 0
+
+newtype CanMemcpy# = CanMemcpy# Int#
+{-# COMPLETE YesMemcpy#, NoMemcpy# #-}
+pattern YesMemcpy# :: CanMemcpy#
+pattern YesMemcpy# = CanMemcpy# 1#
+pattern NoMemcpy# :: CanMemcpy#
+pattern NoMemcpy# = CanMemcpy# 0#
+
+boxCanMemcpy :: CanMemcpy# -> CanMemcpy
+boxCanMemcpy = \case
+  YesMemcpy# -> YesMemcpy
+  NoMemcpy# -> NoMemcpy
 
 data Result
   = Continue !CanMemcpy {-# UNPACK #-} !Bytes
@@ -73,29 +91,54 @@ data Result
   | EndOfInput
   | IsolatedEscape
 
-advAlign :: Bytes -> CanMemcpy -> Result
+newtype Result# = Result#
+  (# (# CanMemcpy#, Bytes# #)
+   | (# CanMemcpy#, Int#, Bytes# #)
+   | (# #)
+   | (# #)
+  #)
+{-# COMPLETE Continue#, Finish#, EndOfInput#, IsolatedEscape# #-}
+pattern Continue# :: CanMemcpy# -> Bytes# -> Result#
+pattern Continue# canMemcpy bs = Result# (# (# canMemcpy, bs #) | | | #)
+pattern Finish# :: CanMemcpy# -> Int# -> Bytes# -> Result#
+pattern Finish# canMemcpy off bs = Result# (# | (# canMemcpy, off, bs #) | | #)
+pattern EndOfInput# :: Result#
+pattern EndOfInput# = Result# (# | | (# #) | #)
+pattern IsolatedEscape# :: Result#
+pattern IsolatedEscape# = Result# (# | | | (# #) #)
+
+boxResult :: Result# -> Result
+boxResult = \case
+  Finish# canMemcpy off bs -> Finish (boxCanMemcpy canMemcpy) (I# off) (Bytes.lift bs)
+  Continue# canMemcpy bs -> Continue (boxCanMemcpy canMemcpy) (Bytes.lift bs)
+  EndOfInput# -> EndOfInput
+  IsolatedEscape# -> IsolatedEscape
+
+------ Advancement Helpers ------
+
+advAlign :: Bytes# -> CanMemcpy# -> Result#
 {-# inline advAlign #-}
-advAlign bs@Bytes{offset} canMemcpy
-  | offset `rem` 8 == 0 = Continue canMemcpy bs
-  | otherwise = case advChar bs canMemcpy of
-      Continue canMemcpy' bs' -> advAlign bs' canMemcpy'
+advAlign (Bytes.lift -> bs@Bytes{offset}) canMemcpy
+  | offset `rem` 8 == 0 = Continue# canMemcpy (Bytes.unlift bs)
+  | otherwise = case advChar (Bytes.unlift bs) canMemcpy of
+      Continue# canMemcpy' bs' -> advAlign bs' canMemcpy'
       res -> res
 
-advChar :: Bytes -> CanMemcpy -> Result
+advChar :: Bytes# -> CanMemcpy# -> Result#
 {-# inline advChar #-}
-advChar bs canMemcpy = case Bytes.uncons bs of
-  Nothing -> EndOfInput
+advChar (Bytes.lift -> bs) canMemcpy = case Bytes.uncons bs of
+  Nothing -> EndOfInput#
   Just (b, bs') -> case b of
     92 -> case Bytes.uncons bs' of
-      Nothing -> IsolatedEscape
-      Just (_, bs'') -> Continue NoMemcpy bs''
-    34 -> Finish canMemcpy (offset bs) bs'
-    _ | 31 < b && b < 127 -> Continue canMemcpy bs'
-      | otherwise -> Continue NoMemcpy bs'
+      Nothing -> IsolatedEscape#
+      Just (_, bs'') -> Continue# NoMemcpy# (Bytes.unlift bs'')
+    34 -> Finish# canMemcpy (unboxInt $ offset bs) (Bytes.unlift bs')
+    _ | 31 < b && b < 127 -> Continue# canMemcpy (Bytes.unlift bs')
+      | otherwise -> Continue# NoMemcpy# (Bytes.unlift bs')
 
-advWords :: Bytes -> CanMemcpy -> Result
+advWords :: Bytes# -> CanMemcpy# -> Result#
 {-# inline advWords #-}
-advWords bs0 canMemcpy0 = Continue canMemcpy0 (loop bs0)
+advWords (Bytes.lift -> bs0) canMemcpy0 = Continue# canMemcpy0 (Bytes.unlift $ loop bs0)
   where
   loop bs@Bytes{array,offset,length}
     | offset + 8 > length = bs
