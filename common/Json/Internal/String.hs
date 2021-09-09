@@ -14,6 +14,12 @@
 module Json.Internal.String
   ( advance
   , Result(..)
+  , Result#
+  , boxCanMemcpy
+  , pattern Continue#
+  , pattern Finish#
+  , pattern EndOfInput#
+  , pattern IsolatedEscape#
   , CanMemcpy
   , pattern YesMemcpy
   , pattern NoMemcpy
@@ -53,9 +59,9 @@ import qualified Data.Text.Short.Unsafe as TS
 unboxInt :: Int -> Int#
 unboxInt (I# i) = i
 
-advance :: Bytes -> Result
-{-# inline advance #-}
-advance bs0 = boxResult (loop (Bytes.unlift bs0) YesMemcpy#)
+advance :: Bytes -> Result#
+{-# noinline advance #-}
+advance !bs0 = loop (Bytes.unlift bs0) YesMemcpy#
   where
   loop bs canMemcpy = case advAlign bs canMemcpy of
     Continue# canMemcpy' bs' -> case advWords bs' canMemcpy' of
@@ -81,6 +87,7 @@ pattern NoMemcpy# :: CanMemcpy#
 pattern NoMemcpy# = CanMemcpy# 0#
 
 boxCanMemcpy :: CanMemcpy# -> CanMemcpy
+{-# inline boxCanMemcpy #-}
 boxCanMemcpy = \case
   YesMemcpy# -> YesMemcpy
   NoMemcpy# -> NoMemcpy
@@ -97,6 +104,7 @@ newtype Result# = Result#
    | (# #)
    | (# #)
   #)
+
 {-# COMPLETE Continue#, Finish#, EndOfInput#, IsolatedEscape# #-}
 pattern Continue# :: CanMemcpy# -> Bytes# -> Result#
 pattern Continue# canMemcpy bs = Result# (# (# canMemcpy, bs #) | | | #)

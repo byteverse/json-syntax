@@ -52,6 +52,7 @@ import Data.Number.Scientific (Scientific)
 import Data.Primitive (SmallArray)
 import Data.Text.Short (ShortText)
 import Data.Word (Word8)
+import GHC.Exts (Int(I#))
 import Json.Internal.String (c2w,byteArrayToShortByteString)
 
 import qualified Data.Builder.ST as B
@@ -320,13 +321,16 @@ string :: (ShortText -> a) -> Int -> Parser SyntaxException s a
 string wrap !start = do
   (canMemcpy, raw) <- Unsafe.uneffectful $ \bs ->
     case StrParse.advance bs of
-      StrParse.Finish canMemcpy end rest ->
-        let raw = Bytes.unsafeTake (end - start) bs
+      StrParse.Finish# canMemcpy# end# rest# ->
+        let rest = Bytes.lift rest#
+            end = I# end#
+            canMemcpy = StrParse.boxCanMemcpy canMemcpy#
+            raw = Bytes.unsafeTake (end - start) bs
             bytesOffset = BytesType.offset :: Bytes -> Int
          in Unsafe.Success (canMemcpy, raw) (bytesOffset rest) (Bytes.length rest)
-      StrParse.EndOfInput -> Unsafe.Failure IncompleteString
-      StrParse.IsolatedEscape -> Unsafe.Failure InvalidEscapeSequence
-      StrParse.Continue _ _ -> errorWithoutStackTrace "json string parsing terminated early"
+      StrParse.EndOfInput# -> Unsafe.Failure IncompleteString
+      StrParse.IsolatedEscape# -> Unsafe.Failure InvalidEscapeSequence
+      StrParse.Continue# _ _ -> errorWithoutStackTrace "json string parsing terminated early"
   case canMemcpy of
     StrParse.YesMemcpy -> do
       ba <- P.effect $ do
