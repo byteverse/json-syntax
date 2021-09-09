@@ -327,16 +327,16 @@ string wrap !start = do
       StrParse.EndOfInput -> Unsafe.Failure IncompleteString
       StrParse.IsolatedEscape -> Unsafe.Failure InvalidEscapeSequence
       StrParse.Continue _ _ -> errorWithoutStackTrace "json string parsing terminated early"
-  if canMemcpy == StrParse.CanMemcpy
-  then do
-    ba <- P.effect $ do
-      dst <- PM.newByteArray (Bytes.length raw)
-      Bytes.unsafeCopy dst 0 raw
-      PM.unsafeFreezeByteArray dst
-    pure . wrap $ TS.fromShortByteStringUnsafe (byteArrayToShortByteString ba)
-  else case StrParse.copyAndUnescape raw of
-    Left _ -> P.fail IncompleteString
-    Right str -> pure $ wrap str
+  case canMemcpy of
+    StrParse.YesMemcpy -> do
+      ba <- P.effect $ do
+        dst <- PM.newByteArray (Bytes.length raw)
+        Bytes.unsafeCopy dst 0 raw
+        PM.unsafeFreezeByteArray dst
+      pure . wrap $ TS.fromShortByteStringUnsafe (byteArrayToShortByteString ba)
+    _ -> case StrParse.copyAndUnescape raw of
+      Left _ -> P.fail IncompleteString
+      Right str -> pure $ wrap str
 
 
 -- | Infix pattern synonym for 'Member'.

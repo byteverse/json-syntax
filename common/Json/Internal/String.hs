@@ -2,6 +2,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE TypeApplications #-}
@@ -9,7 +10,9 @@
 module Json.Internal.String
   ( advance
   , Result(..)
-  , CanMemcpy(..)
+  , CanMemcpy
+  , pattern YesMemcpy
+  , pattern NoMemcpy
   , copyAndUnescape
   , c2w
   , byteArrayToShortByteString
@@ -45,7 +48,7 @@ import qualified Data.Text.Short.Unsafe as TS
 
 advance :: Bytes -> Result
 {-# inline advance #-}
-advance bs0 = loop bs0 CanMemcpy
+advance bs0 = loop bs0 YesMemcpy
   where
   loop bs canMemcpy = case advAlign bs canMemcpy of
     Continue canMemcpy' bs' -> case advWords bs' canMemcpy' of
@@ -56,8 +59,14 @@ advance bs0 = loop bs0 CanMemcpy
     res -> res
 
 
-data CanMemcpy = CanMemcpy | NoMemcpy
-  deriving (Eq)
+newtype CanMemcpy = CanMemcpy Int
+
+pattern YesMemcpy :: CanMemcpy 
+pattern YesMemcpy = CanMemcpy 1
+
+pattern NoMemcpy :: CanMemcpy 
+pattern NoMemcpy = CanMemcpy 0
+
 data Result
   = Continue !CanMemcpy !Bytes
   | Finish !CanMemcpy !Int !Bytes -- offset of final byte of string, bytes after string
