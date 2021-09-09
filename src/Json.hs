@@ -1,8 +1,9 @@
 {-# language BangPatterns #-}
 {-# language BinaryLiterals #-}
 {-# language BlockArguments #-}
-{-# language DerivingStrategies #-}
 {-# language DeriveAnyClass #-}
+{-# language DerivingStrategies #-}
+{-# language DuplicateRecordFields #-}
 {-# language LambdaCase #-}
 {-# language MagicHash #-}
 {-# language NamedFieldPuns #-}
@@ -42,31 +43,30 @@ module Json
 import Prelude hiding (Bool(True,False))
 
 import Control.Exception (Exception)
-import Control.Monad.ST (ST)
 import Control.Monad.ST.Run (runSmallArrayST)
-import Data.Bits ((.&.),(.|.),unsafeShiftR)
 import Data.Builder.ST (Builder)
 import Data.Bytes.Parser (Parser)
 import Data.Bytes.Types (Bytes(..))
 import Data.Char (ord)
 import Data.Number.Scientific (Scientific)
-import Data.Primitive (ByteArray,MutableByteArray,SmallArray)
+import Data.Primitive (SmallArray)
 import Data.Text.Short (ShortText)
-import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
-import GHC.Word (Word8(W8#),Word16(W16#))
+import Data.Word (Word8)
+import Json.Internal.String (c2w,byteArrayToShortByteString)
 
-import qualified Prelude
 import qualified Data.Builder.ST as B
+import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Builder as BLDR
 import qualified Data.Bytes.Parser as P
+import qualified Data.Bytes.Parser.Latin as Latin
+import qualified Data.Bytes.Parser.Unsafe as Unsafe
+import qualified Data.Bytes.Types as BytesType
 import qualified Data.Chunks as Chunks
-import qualified Data.Text.Short.Unsafe as TS
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Primitive as PM
-import qualified Data.Bytes.Parser.Utf8 as Utf8
-import qualified Data.Bytes.Parser.Latin as Latin
-import qualified Data.ByteString.Short.Internal as BSS
-import qualified Data.Bytes.Parser.Unsafe as Unsafe
+import qualified Data.Text.Short.Unsafe as TS
+import qualified Json.Internal.String as StrParse
+import qualified Prelude
 
 -- | The JSON syntax tree described by the ABNF in RFC 7159. Notable
 -- design decisions include:
@@ -307,9 +307,6 @@ arrayStep !b = do
       pure (Array arr)
     _ -> P.fail ExpectedCommaOrRightBracket
 
-c2w :: Char -> Word8
-c2w = fromIntegral . ord
-
 -- This is adapted from the function bearing the same name
 -- in json-tokens. If you find a problem with it, then
 -- something if wrong in json-tokens as well.
@@ -320,108 +317,27 @@ c2w = fromIntegral . ord
 -- code from being needlessly duplicated in three different places.
 string :: (ShortText -> a) -> Int -> Parser SyntaxException s a
 {-# inline string #-}
-string wrap !start = go 1 where
-  go !canMemcpy = do
-    P.any IncompleteString >>= \case
-      92 -> P.any InvalidEscapeSequence *> go 0 -- backslash
-      34 -> do -- double quote
-        !pos <- Unsafe.cursor
-        case canMemcpy of
-          1 -> do
-            src <- Unsafe.expose
-            str <- P.effect $ do
-              let end = pos - 1
-              let len = end - start
-              dst <- PM.newByteArray len
-              PM.copyByteArray dst 0 src start len
-              PM.unsafeFreezeByteArray dst
-            pure (wrap (TS.fromShortByteStringUnsafe (byteArrayToShortByteString str)))
-          _ -> do
-            Unsafe.unconsume (pos - start)
-            let end = pos - 1
-            let maxLen = end - start
-            copyAndEscape wrap maxLen
-      W8# w -> go (canMemcpy .&. I# (ltWord# w 128##) .&. I# (gtWord# w 31##))
+string wrap !start = do
+  (canMemcpy, raw) <- Unsafe.uneffectful $ \bs ->
+    case StrParse.advance bs of
+      StrParse.Finish canMemcpy end rest ->
+        let raw = Bytes.unsafeTake (end - start) bs
+            bytesOffset = BytesType.offset :: Bytes -> Int
+         in Unsafe.Success (canMemcpy, raw) (bytesOffset rest) (Bytes.length rest)
+      StrParse.EndOfInput -> Unsafe.Failure IncompleteString
+      StrParse.IsolatedEscape -> Unsafe.Failure InvalidEscapeSequence
+      StrParse.Continue _ _ -> errorWithoutStackTrace "json string parsing terminated early"
+  if canMemcpy == StrParse.CanMemcpy
+  then do
+    ba <- P.effect $ do
+      dst <- PM.newByteArray (Bytes.length raw)
+      Bytes.unsafeCopy dst 0 raw
+      PM.unsafeFreezeByteArray dst
+    pure . wrap $ TS.fromShortByteStringUnsafe (byteArrayToShortByteString ba)
+  else case StrParse.copyAndUnescape raw of
+    Left _ -> P.fail IncompleteString
+    Right str -> pure $ wrap str
 
-copyAndEscape :: (ShortText -> a) -> Int -> Parser SyntaxException s a
-{-# inline copyAndEscape #-}
-copyAndEscape wrap !maxLen = do
-  !dst <- P.effect (PM.newByteArray maxLen)
-  let go !ix = Utf8.any# IncompleteString `P.bindFromCharToLifted` \c -> case c of
-        '\\'# -> Latin.any IncompleteEscapeSequence >>= \case
-          '"' -> do
-            P.effect (PM.writeByteArray dst ix (c2w '"'))
-            go (ix + 1)
-          '\\' -> do
-            P.effect (PM.writeByteArray dst ix (c2w '\\'))
-            go (ix + 1)
-          't' -> do
-            P.effect (PM.writeByteArray dst ix (c2w '\t'))
-            go (ix + 1)
-          'n' -> do
-            P.effect (PM.writeByteArray dst ix (c2w '\n'))
-            go (ix + 1)
-          'r' -> do
-            P.effect (PM.writeByteArray dst ix (c2w '\r'))
-            go (ix + 1)
-          '/' -> do
-            P.effect (PM.writeByteArray dst ix (c2w '/'))
-            go (ix + 1)
-          'b' -> do
-            P.effect (PM.writeByteArray dst ix (c2w '\b'))
-            go (ix + 1)
-          'f' -> do
-            P.effect (PM.writeByteArray dst ix (c2w '\f'))
-            go (ix + 1)
-          'u' -> do
-            w <- Latin.hexFixedWord16 InvalidEscapeSequence
-            if w >= 0xD800 && w < 0xDFFF
-              then go =<< P.effect (encodeUtf8Char dst ix '\xFFFD')
-              else go =<< P.effect (encodeUtf8Char dst ix (w16ToChar w))
-          _ -> P.fail InvalidEscapeSequence
-        '"'# -> do
-          str <- P.effect
-            (PM.unsafeFreezeByteArray =<< PM.resizeMutableByteArray dst ix)
-          pure (wrap (TS.fromShortByteStringUnsafe (byteArrayToShortByteString str)))
-        _ -> go =<< P.effect (encodeUtf8Char dst ix (C# c))
-  go 0
-
-encodeUtf8Char :: MutableByteArray s -> Int -> Char -> ST s Int
-encodeUtf8Char !marr !ix !c
-  | c < '\128' = do
-      PM.writeByteArray marr ix (c2w c)
-      pure (ix + 1)
-  | c < '\x0800' = do
-      PM.writeByteArray marr ix
-        (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 6 .|. 0b11000000))
-      PM.writeByteArray marr (ix + 1)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (ord c))))
-      pure (ix + 2)
-  | c <= '\xffff' = do
-      PM.writeByteArray marr ix
-        (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 12 .|. 0b11100000))
-      PM.writeByteArray marr (ix + 1)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 6))))
-      PM.writeByteArray marr (ix + 2)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (ord c))))
-      pure (ix + 3)
-  | otherwise = do
-      PM.writeByteArray marr ix
-        (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 18 .|. 0b11110000))
-      PM.writeByteArray marr (ix + 1)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 12))))
-      PM.writeByteArray marr (ix + 2)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 6))))
-      PM.writeByteArray marr (ix + 3)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (ord c))))
-      pure (ix + 4)
-
-byteArrayToShortByteString :: ByteArray -> BSS.ShortByteString
-byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
-
--- Precondition: Not in the range [U+D800 .. U+DFFF]
-w16ToChar :: Word16 -> Char
-w16ToChar (W16# w) = C# (chr# (word2Int# w))
 
 -- | Infix pattern synonym for 'Member'.
 pattern (:->) :: ShortText -> Value -> Member
