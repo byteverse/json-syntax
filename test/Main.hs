@@ -21,7 +21,10 @@ import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Builder as Builder
 import qualified Data.Bytes.Chunks as BChunks
 import qualified Data.HashMap.Strict as HM
+import qualified Data.List as List
 import qualified Data.Number.Scientific as SCI
+import qualified Data.Primitive as PM
+import qualified Data.Primitive.Contiguous as C
 import qualified Data.Text.Short as TS
 import qualified GHC.Exts as Exts
 import qualified Json as J
@@ -121,22 +124,22 @@ tests = testGroup "Tests"
         let w = w0 .&. 0x7F7F_7F7F_7F7F_7F7F
          in (StrParse.hasValueAscii n w /= 0) === any (== n) (word64ToBytes w)
     ]
-  , TQC.testProperty "M" $ QC.forAll (jsonFromPrintableStrings <$> QC.vectorOf 10 QC.arbitrary) $ \val0 -> do
+  , TQC.testProperty "M" $ QC.forAllShrink (jsonFromPrintableStrings <$> QC.vectorOf 10 QC.arbitrary) shrinkJson $ \val0 -> do
       let enc = BChunks.concat (Builder.run 128 (J.encode val0))
       case J.decode enc of
         Left _ -> QC.property False
         Right val1 -> val0 === val1
-  , TQC.testProperty "N" $ QC.forAll (jsonFromPrintableStrings <$> QC.vectorOf 400 QC.arbitrary) $ \val0 -> do
+  , TQC.testProperty "N" $ QC.forAllShrink (jsonFromPrintableStrings <$> QC.vectorOf 400 QC.arbitrary) shrinkJson $ \val0 -> do
       let enc = BChunks.concat (Builder.run 128 (J.encode val0))
       case J.decode enc of
         Left e -> QC.counterexample (show e) False
         Right val1 -> val0 === val1
-  , TQC.testProperty "O" $ QC.forAll (jsonFromAsciiStrings <$> QC.vectorOf 10 QC.arbitrary) $ \val0 -> do
+  , TQC.testProperty "O" $ QC.forAllShrink (jsonFromAsciiStrings <$> QC.vectorOf 10 QC.arbitrary) shrinkJson $ \val0 -> do
       let enc = BChunks.concat (Builder.run 128 (J.encode val0))
       case J.decode enc of
         Left _ -> QC.property False
         Right val1 -> val0 === val1
-  , TQC.testProperty "P" $ QC.forAll (jsonFromAsciiStrings <$> QC.vectorOf 400 QC.arbitrary) $ \val0 -> do
+  , TQC.testProperty "P" $ QC.forAllShrink (jsonFromAsciiStrings <$> QC.vectorOf 400 QC.arbitrary) shrinkJson $ \val0 -> do
       let enc = BChunks.concat (Builder.run 128 (J.encode val0))
       case J.decode enc of
         Left e -> QC.counterexample (show e) False
@@ -179,6 +182,38 @@ tests = testGroup "Tests"
       \,\"\"\
       \]")
   ]
+
+shrinkJson :: J.Value -> [J.Value]
+shrinkJson = \case
+  J.Null -> []
+  J.Number{} -> []
+  J.True -> []
+  J.False -> []
+  J.Object{} -> []
+  J.Array xs -> concat
+    [ let n = PM.sizeofSmallArray xs in case n of
+        0 -> []
+        1 -> [J.Array mempty]
+        _ | n < 10 -> [J.Array (C.clone (C.slice xs 0 (n - 1)))]
+          | otherwise ->
+              [ J.Array (C.clone (C.slice xs 0 (n - 5)))
+              , J.Array (C.clone (C.slice xs 3 (n - 6)))
+              ]
+    , case C.findIndex (not . List.null . shrinkJson) xs of
+        Nothing -> []
+        Just ix -> case shrinkJson (PM.indexSmallArray xs ix) of
+          [] -> errorWithoutStackTrace "shrinkJson: implementation mistake"
+          vs -> map (\v -> J.Array $! C.replaceAt xs ix v) vs
+    ]
+  J.String s -> concat
+    [ let n = TS.length s in case n of
+        0 -> []
+        1 -> [J.String mempty]
+        _ -> [J.String (TS.take (div n 2) s)]
+    , let s' = TS.filter (\c -> c >= ' ' && c <= '~') s in if s == s'
+        then []
+        else [J.String s']
+   ]
 
 jsonFromPrintableStrings :: [QC.PrintableString] -> J.Value
 jsonFromPrintableStrings xs = J.Array (Exts.fromList (map (J.String . TS.pack . QC.getPrintableString) xs))
