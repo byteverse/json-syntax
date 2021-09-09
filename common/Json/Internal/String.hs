@@ -93,7 +93,7 @@ advWords bs0 canMemcpy0 = Continue canMemcpy0 (loop bs0)
     | otherwise =
       let w = indexByteArray array (offset `div` 8)
        in if canAdvWord w
-          then loop bs{offset = offset + 8}
+          then loop (Bytes.unsafeDrop 8 bs)
           else bs
 
 canAdvWord :: Word64 -> Bool
