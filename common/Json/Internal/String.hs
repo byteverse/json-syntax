@@ -68,8 +68,8 @@ pattern NoMemcpy :: CanMemcpy
 pattern NoMemcpy = CanMemcpy 0
 
 data Result
-  = Continue !CanMemcpy !Bytes
-  | Finish !CanMemcpy !Int !Bytes -- offset of final byte of string, bytes after string
+  = Continue !CanMemcpy {-# UNPACK #-} !Bytes
+  | Finish !CanMemcpy !Int {-# UNPACK #-} !Bytes -- offset of final byte of string, bytes after string
   | EndOfInput
   | IsolatedEscape
 
