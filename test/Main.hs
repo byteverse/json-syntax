@@ -1,3 +1,4 @@
+{-# language BangPatterns #-}
 {-# language LambdaCase #-}
 {-# language NumericUnderscores #-}
 {-# language OverloadedStrings #-}
@@ -144,6 +145,11 @@ tests = testGroup "Tests"
       case J.decode enc of
         Left e -> QC.counterexample (show e) False
         Right val1 -> val0 === val1
+  , TQC.testProperty "Q" $ QC.forAllShrink (jsonFromPrintableAsciiStrings <$> QC.vectorOf 100 QC.arbitrary) shrinkJson $ \val0 -> do
+      let enc = BChunks.concat (Builder.run 128 (J.encode val0))
+      case J.decode enc of
+        Left e -> QC.counterexample (show e) False
+        Right val1 -> val0 === val1
   , THU.testCase "Twitter100" $
       case J.decode (Bytes.fromByteArray encodedTwitter100) of
         Left _ -> fail "nope"
@@ -193,11 +199,19 @@ shrinkJson = \case
   J.Array xs -> concat
     [ let n = PM.sizeofSmallArray xs in case n of
         0 -> []
-        1 -> [J.Array mempty]
-        _ | n < 10 -> [J.Array (C.clone (C.slice xs 0 (n - 1)))]
+        1 -> concat
+          [ [J.Array mempty]
+          , case PM.indexSmallArray xs 0 of
+              J.String s -> map (J.Array . C.singleton) (shrinkJsonString s)
+              _ -> []
+          ]
+        _ | n < 10 -> map (J.Array . Exts.fromList) (subOneLists (Exts.toList xs))
           | otherwise ->
-              [ J.Array (C.clone (C.slice xs 0 (n - 5)))
-              , J.Array (C.clone (C.slice xs 3 (n - 6)))
+              [ J.Array (C.ifilter (\ix _ -> mod ix 2 == 0) xs)
+              , J.Array (C.ifilter (\ix _ -> mod ix 2 == 1) xs)
+              , J.Array (C.ifilter (\ix _ -> mod ix 3 == 0) xs)
+              , J.Array (C.ifilter (\ix _ -> mod ix 3 == 1) xs)
+              , J.Array (C.ifilter (\ix _ -> mod ix 3 == 2) xs)
               ]
     , case C.findIndex (not . List.null . shrinkJson) xs of
         Nothing -> []
@@ -205,21 +219,33 @@ shrinkJson = \case
           [] -> errorWithoutStackTrace "shrinkJson: implementation mistake"
           vs -> map (\v -> J.Array $! C.replaceAt xs ix v) vs
     ]
-  J.String s -> concat
-    [ let n = TS.length s in case n of
-        0 -> []
-        1 -> [J.String mempty]
-        _ -> [J.String (TS.take (div n 2) s)]
-    , let s' = TS.filter (\c -> c >= ' ' && c <= '~') s in if s == s'
-        then []
-        else [J.String s']
-   ]
+  J.String s -> shrinkJsonString s
+
+shrinkJsonString :: ShortText -> [J.Value]
+shrinkJsonString !s = concat
+  [ let n = TS.length s in case n of
+      0 -> []
+      1 -> [J.String mempty]
+      _ | n < 12 -> map (J.String . TS.pack) (subOneLists (TS.unpack s))
+        | otherwise -> [J.String (TS.take (div n 2) s)]
+  , let s' = TS.filter (\c -> c >= ' ' && c <= '~') s in if s == s'
+      then []
+      else [J.String s']
+  ]
+
+-- All lists obtained by removing a single element from the list.
+subOneLists :: [a] -> [[a]]
+subOneLists [] = []
+subOneLists (x:xs) = xs : map (x :) (subOneLists xs)
 
 jsonFromPrintableStrings :: [QC.PrintableString] -> J.Value
 jsonFromPrintableStrings xs = J.Array (Exts.fromList (map (J.String . TS.pack . QC.getPrintableString) xs))
 
 jsonFromAsciiStrings :: [QC.ASCIIString] -> J.Value
 jsonFromAsciiStrings xs = J.Array (Exts.fromList (map (J.String . TS.pack . QC.getASCIIString) xs))
+
+jsonFromPrintableAsciiStrings :: [PrintableAsciiString] -> J.Value
+jsonFromPrintableAsciiStrings xs = J.Array (Exts.fromList (map (J.String . TS.pack . getPrintableAsciiString) xs))
 
 toBadSci :: SCI.Scientific -> Scientific
 toBadSci = SCI.withExposed
@@ -248,3 +274,13 @@ word64ToBytes w =
   [ fromIntegral $ (w `shiftR` (8*i)) .&. 0xFF
   | i <- [0..7]
   ]
+
+newtype PrintableAsciiString = PrintableAsciiString { getPrintableAsciiString :: String }
+  deriving (Eq,Ord,Show)
+
+instance TQC.Arbitrary PrintableAsciiString where
+  arbitrary = PrintableAsciiString `fmap` TQC.listOf arbitraryPrintableAsciiChar
+
+arbitraryPrintableAsciiChar :: TQC.Gen Char
+arbitraryPrintableAsciiChar = TQC.chooseEnum (' ', '~')
+
