@@ -48,6 +48,10 @@ tests = testGroup "Tests"
         Right (J.Array (Exts.fromList [J.String "bar"]))
         @=?
         J.decode (Bytes.fromAsciiString "[\"bar\"]")
+    , THU.testCase "C2" $
+        Right (J.Array (Exts.fromList [J.String ""]))
+        @=?
+        J.decode (Bytes.fromAsciiString "[\"\"]")
     , THU.testCase "D" $
         Right (J.Object (Exts.fromList [J.Member "foo" J.True, J.Member "bar" J.False]))
         @=?
@@ -74,6 +78,14 @@ tests = testGroup "Tests"
     , THU.testCase "H" $ case J.decode (shortTextToBytes " [] x") of
         Left _ -> pure ()
         Right _ -> fail "this was not supposed parse"
+    , THU.testCase "H2" $
+        Right (J.Array $ Exts.fromList [J.String "foo", J.String "bar"])
+        @=?
+        J.decode (shortTextToBytes "[\"foo\",\"bar\"]")
+    , THU.testCase "H3" $
+        Right (J.Array $ Exts.fromList [J.String "¯_(ツ)_/¯", J.String "bar"])
+        @=?
+        J.decode (shortTextToBytes "[\"¯_(ツ)_/¯\",\"bar\"]")
     , THU.testCase "I" $
         BChunks.concat (Builder.run 1 (J.encode (J.Array mempty)))
         @=?
@@ -141,6 +153,31 @@ tests = testGroup "Tests"
         Right j -> case J.decode (BChunks.concat (Builder.run 1 (J.encode j))) of
           Left _ -> fail "encode did not produce a document that could be decoded"
           Right j' -> when (j /= j') (fail "document was not the same after roundtrip")
+  , THU.testCase "ASFAS" $
+    Right (J.Array $ Exts.fromList
+      [J.String ">K\168161VYp\171715"
+      ,J.String "\139199H'^"
+      ,J.String "6"
+      ,J.String "fyX^"
+      ,J.String "i0Zq!P'r8?"
+      ,J.String ":<Q\46295[x'D\132162y" -- if this line is moved upwards, the case starts succeeding
+      ,J.String "FP\128021\174994V\34321q"
+      ,J.String "nzij"
+      ,J.String ""
+      -- ,J.String "\36641ZmN`mwy/"
+      ])
+    @=?
+    J.decode (shortTextToBytes
+      "[\">K\168161VYp\171715\"\
+      \,\"\139199H'^\&\"\
+      \,\"6\"\
+      \,\"fyX^\&\"\
+      \,\"i0Zq!P'r8?\"\
+      \,\":<Q\46295[x'D\132162y\"\
+      \,\"FP\128021\174994V\34321q\"\
+      \,\"nzij\"\
+      \,\"\"\
+      \]")
   ]
 
 jsonFromPrintableStrings :: [QC.PrintableString] -> J.Value
