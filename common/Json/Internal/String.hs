@@ -61,12 +61,12 @@ unboxInt (I# i) = i
 
 advance :: Bytes -> Result#
 {-# noinline advance #-}
-advance !bs0 = loop (Bytes.unlift bs0) YesMemcpy#
+advance !bs0 = loop bs0 YesMemcpy#
   where
   loop bs canMemcpy = case advAlign bs canMemcpy of
-    Continue# canMemcpy' bs' -> case advWords bs' canMemcpy' of
-      Continue# canMemcpy'' bs'' -> case advChar bs'' canMemcpy'' of
-        Continue# canMemcpy''' bs''' -> loop bs''' canMemcpy'''
+    Continue# canMemcpy' bs' -> case advWords (Bytes.lift bs') canMemcpy' of
+      Continue# canMemcpy'' bs'' -> case advChar (Bytes.lift bs'') canMemcpy'' of
+        Continue# canMemcpy''' bs''' -> loop (Bytes.lift bs''') canMemcpy'''
         res -> res
       res -> res
     res -> res
@@ -115,26 +115,20 @@ pattern EndOfInput# = Result# (# | | (# #) | #)
 pattern IsolatedEscape# :: Result#
 pattern IsolatedEscape# = Result# (# | | | (# #) #)
 
-boxResult :: Result# -> Result
-boxResult = \case
-  Finish# canMemcpy off bs -> Finish (boxCanMemcpy canMemcpy) (I# off) (Bytes.lift bs)
-  Continue# canMemcpy bs -> Continue (boxCanMemcpy canMemcpy) (Bytes.lift bs)
-  EndOfInput# -> EndOfInput
-  IsolatedEscape# -> IsolatedEscape
 
 ------ Advancement Helpers ------
 
-advAlign :: Bytes# -> CanMemcpy# -> Result#
+advAlign :: Bytes -> CanMemcpy# -> Result#
 {-# inline advAlign #-}
-advAlign (Bytes.lift -> bs@Bytes{offset}) canMemcpy
-  | offset `rem` 8 == 0 = Continue# canMemcpy (Bytes.unlift bs)
-  | otherwise = case advChar (Bytes.unlift bs) canMemcpy of
-      Continue# canMemcpy' bs' -> advAlign bs' canMemcpy'
+advAlign bs@Bytes{offset} canMemcpy
+  | offset .&. 7 == 0 = Continue# canMemcpy (Bytes.unlift bs)
+  | otherwise = case advChar bs canMemcpy of
+      Continue# canMemcpy' bs' -> advAlign (Bytes.lift bs') canMemcpy'
       res -> res
 
-advChar :: Bytes# -> CanMemcpy# -> Result#
+advChar :: Bytes -> CanMemcpy# -> Result#
 {-# inline advChar #-}
-advChar (Bytes.lift -> bs) canMemcpy = case Bytes.uncons bs of
+advChar bs canMemcpy = case Bytes.uncons bs of
   Nothing -> EndOfInput#
   Just (b, bs') -> case b of
     92 -> case Bytes.uncons bs' of
@@ -144,9 +138,9 @@ advChar (Bytes.lift -> bs) canMemcpy = case Bytes.uncons bs of
     _ | 31 < b && b < 127 -> Continue# canMemcpy (Bytes.unlift bs')
       | otherwise -> Continue# NoMemcpy# (Bytes.unlift bs')
 
-advWords :: Bytes# -> CanMemcpy# -> Result#
+advWords :: Bytes -> CanMemcpy# -> Result#
 {-# inline advWords #-}
-advWords (Bytes.lift -> bs0) canMemcpy0 = Continue# canMemcpy0 (Bytes.unlift $ loop bs0)
+advWords bs0 canMemcpy0 = Continue# canMemcpy0 (Bytes.unlift $ loop bs0)
   where
   loop bs@Bytes{array,offset,length}
     | offset + 8 > length = bs
