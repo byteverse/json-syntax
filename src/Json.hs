@@ -562,7 +562,7 @@ object11 a b c d e f g h i j k = Object $ runSmallArrayST $ do
   PM.writeSmallArray dst 10 k
   PM.unsafeFreezeSmallArray dst
 
--- | Construct a JSON object with eleven members.
+-- | Construct a JSON object with twelve members.
 object12 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
          -> Member -> Member -> Member -> Member -> Value
 {-# inline object12 #-}
