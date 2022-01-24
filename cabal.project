@@ -1,0 +1,16 @@
+packages: .
+
+source-repository-package
+    type: git
+    location: https://github.com/byteverse/bytesmith
+    tag: ac29b91728cea68b5107e69133fd78f0d68f76e0
+
+source-repository-package
+    type: git
+    location: https://github.com/byteverse/byteslice
+    tag: 71e6228fdad23d0bdcb944d46c3f918688879a3d
+
+source-repository-package
+    type: git
+    location: https://github.com/byteverse/zigzag
+    tag: 689fc7c852bf029af51333bcfffe3661c3276cf1
