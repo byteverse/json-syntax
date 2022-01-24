@@ -7,12 +7,12 @@ module Json.Smile
 
 import Prelude hiding (Bool(..))
 
-import Data.Bits (unsafeShiftL, unsafeShiftR, (.&.))
 import Data.Bytes.Builder (Builder)
 import Data.Foldable (foldMap')
 import Data.Int (Int32,Int64)
 import Data.Text.Short (ShortText)
-import Data.Word (Word8,Word64)
+import Data.Word (Word8)
+import Data.Word.Zigzag (toZigzag64)
 import Json (Value(..), Member(..))
 
 import qualified Data.Bytes.Builder as B
@@ -52,8 +52,3 @@ encodeKeySimple str = case SBS.length (TS.toShortByteString str) of
     , w8 <- fromIntegral @Int @Word8 (n - 2)
     -> B.word8 (0xC0 + w8) <> B.shortTextUtf8 str
     | otherwise -> B.word8 0x34 <> B.shortTextUtf8 str <> B.word8 0xFC
-
-
-toZigzag64 :: Int64 -> Word64
-toZigzag64 i = fromIntegral @Int64 @Word64 $
-  (i `unsafeShiftL` 1) .&. (i `unsafeShiftR` 63)
