@@ -25,7 +25,7 @@ byteStringTwitter100 :: ByteString
 byteStringTwitter100 = encodeUtf8
   [text|
     {
-        "completed_in": 1.195569,
+        "completed_in": 1.000000,
         "max_id": 30121530767708160,
         "max_id_str": "30121530767708160",
         "next_page": "?page=2&max_id=30121530767708160&rpp=100&q=haskell",

@@ -34,7 +34,8 @@ encodeSimple v0 = header <> recurse v0
       = B.word8 0x24 <> B.int32LEB128 i32
     | Just i64 <- Sci.toInt64 x
       = B.word8 0x25 <> B.int64LEB128 i64
-    | otherwise = errorWithoutStackTrace "TODO Smile encoding only supports Int32/Int64 numbers for now"
+    | otherwise = errorWithoutStackTrace
+        ("TODO Smile encoding only supports Int32/Int64 numbers for now: " ++ show x)
   recurse Null = B.word8 0x21
   recurse False = B.word8 0x22
   recurse True = B.word8 0x23
