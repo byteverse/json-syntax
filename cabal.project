@@ -8,9 +8,4 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/byteverse/bytebuild
-    tag: a5f900e3a17500f1f740946bbe597fa2e32aaa36
-
-source-repository-package
-    type: git
-    location: https://github.com/byteverse/zigzag
-    tag: 689fc7c852bf029af51333bcfffe3661c3276cf1
+    tag: def7f05d8ba3d32dae8f88ef89c512baaedbd241

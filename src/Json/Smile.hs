@@ -7,14 +7,16 @@ module Json.Smile
 
 import Prelude hiding (Bool(..))
 
-import Data.Bits (finiteBitSize,unsafeShiftL)
+import Data.Bits (finiteBitSize,unsafeShiftL,unsafeShiftR,(.&.),(.|.))
 import Data.Bytes.Builder (Builder)
 import Data.Foldable (foldMap')
 import Data.Functor ((<&>))
 import Data.Int (Int32)
 import Data.Text.Short (ShortText)
-import Data.Word (Word8)
+import Data.Word (Word8,Word32)
+import Data.Word.Zigzag (toZigzag,toZigzag32,toZigzag64)
 import Json (Value(..), Member(..))
+import Numeric.Natural (Natural)
 
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Builder as B
@@ -35,9 +37,9 @@ encodeSimple v0 = header <> recurse v0
   recurse (String str) = B.word8 0xE4 <> B.shortTextUtf8 str <> B.word8 0xFC
   recurse (Number x)
     | Just i32 <- Sci.toInt32 x
-      = B.word8 0x24 <> B.int32LEB128 i32
+      = B.word8 0x24 <> vlqSmile (fromIntegral $ toZigzag32 i32)
     | Just i64 <- Sci.toInt64 x
-      = B.word8 0x25 <> B.int64LEB128 i64
+      = B.word8 0x25 <> vlqSmile (fromIntegral $ toZigzag64 i64)
     | otherwise = Sci.withExposed encodeSmall encodeBig x
   recurse Null = B.word8 0x21
   recurse False = B.word8 0x22
@@ -46,13 +48,17 @@ encodeSimple v0 = header <> recurse v0
   recMember Member{key,value} = encodeKeySimple key <> recurse value
   encodeSmall :: Int -> Int -> Builder
   encodeSmall c e
-    =  B.word8 0x2A -- token tag
-    <> B.int32LEB128 (fromIntegral @Int @Int32 e) -- zigzag scale, WARNING performs modulo since SMILE doesn't support exponents larger than 32-bit
-    <> B.wordLEB128 (fromIntegral @Int @Word nCoeffBytes)
+    =  B.word8 0x2A -- bigdecimal token tag
+    <> vlqSmile (fromIntegral @Word32 @Natural $ toZigzag32 scale) -- exponent
+    <> vlqSmile (fromIntegral @Int @Natural nCoeffBytes) -- size of byte array
     <> B.sevenEightSmile (Bytes.fromShortByteString $ SBS.pack coeffBytes)
     where
-    nCoeffBytes = finiteBitSize c `div` 8
-    -- TODO probably bounded builder
+    -- | WARNING performs modulo since SMILE doesn't support exponents larger than 32-bit
+    scale = fromIntegral @Int @Int32 e
+    nCoeffBytes =
+      let nbits = finiteBitSize c
+          nbytes = nbits `div` 8
+       in if nbits `mod` 8 == 0 then nbytes else nbytes + 1
     coeffBytes :: [Word8] -- big-endian
     coeffBytes = [nCoeffBytes - 1 .. 0] <&> \i ->
       fromIntegral @Int @Word8 (unsafeShiftL c (8*i))
@@ -68,3 +74,15 @@ encodeKeySimple str = case SBS.length (TS.toShortByteString str) of
     , w8 <- fromIntegral @Int @Word8 (n - 2)
     -> B.word8 (0xC0 + w8) <> B.shortTextUtf8 str
     | otherwise -> B.word8 0x34 <> B.shortTextUtf8 str <> B.word8 0xFC
+
+vlqSmile :: Natural -> Builder
+vlqSmile n0 =
+  let (rest, lastBits) = take127bits n0
+   in loop rest <> B.word8 (lastBits .|. 0x80)
+  where
+  loop n
+    | n == 0 = mempty
+    | (rest, bits) <- take127bits n
+      = loop rest <> B.word8 bits
+  take127bits :: Natural -> (Natural, Word8)
+  take127bits n = (n `unsafeShiftR` 7, fromIntegral @Natural @Word8 n .&. 0x7F)
