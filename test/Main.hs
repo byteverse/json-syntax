@@ -133,6 +133,7 @@ tests = testGroup "Tests"
       , mkTest "long positive integer" "008"
       , mkTest "long negative integer" "009"
       , mkTest "scientific-notation Int-repr" "010"
+      , mkTest "scientific-notation negative-int-repr" "011"
       ]
   , THU.testCase "Twitter100" $
       case J.decode (Bytes.fromByteArray encodedTwitter100) of
