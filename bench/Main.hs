@@ -37,7 +37,7 @@ main = do
               (\v -> Chunks.length (BLDR.run 128 (J.encode v)))
               valueTwitter100
           , bench "encode-smile-simple" $ whnf
-              (\v -> Chunks.length (BLDR.run 128 (Smile.encodeSimple v)))
+              (\v -> Chunks.length (BLDR.run 128 (Smile.encode v)))
               valueTwitter100
           ]
         ]
@@ -50,7 +50,7 @@ main = do
               (\v -> Chunks.length (BLDR.run 128 (J.encode v)))
               valueUrl100
           , bench "encode-smile-simple" $ whnf
-              (\v -> Chunks.length (BLDR.run 128 (Smile.encodeSimple v)))
+              (\v -> Chunks.length (BLDR.run 128 (Smile.encode v)))
               valueUrl100
           ]
         ]

@@ -8,4 +8,4 @@ source-repository-package
 source-repository-package
     type: git
     location: https://github.com/byteverse/bytebuild
-    tag: def7f05d8ba3d32dae8f88ef89c512baaedbd241
+    tag: 4f03a98100237863bb4a9ac75d4de6723a8e0961

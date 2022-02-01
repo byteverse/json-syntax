@@ -109,6 +109,51 @@ tests = testGroup "Tests"
           Left e -> QC.counterexample (show e) False
           Right val1 -> val0 === val1
     ]
+  , testGroup "smile-fragment"
+    [ THU.testCase "biginteger-65535" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger 65535))
+         in enc @=? Exts.fromList [0x26,0x83,0x00,0x3f,0x7f,0x07]
+    , THU.testCase "biginteger-30000" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger 30000))
+         in enc @=? Exts.fromList [0x26,0x82,0x3a,0x4c,0x00]
+    , THU.testCase "biginteger-neg-300" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger (-300)))
+         in enc @=? Exts.fromList [0x26,0x82,0x7f,0x35,0x00]
+    , THU.testCase "biginteger-neg-65534" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger (-65534)))
+         in enc @=? Exts.fromList [0x26,0x83,0x7f,0x40,0x00,0x02]
+    , THU.testCase "biginteger-neg-65535" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger (-65535)))
+         in enc @=? Exts.fromList [0x26,0x83,0x7f,0x40,0x00,0x01]
+    , THU.testCase "biginteger-neg-65536" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger (-65536)))
+         in enc @=? Exts.fromList [0x26,0x83,0x7f,0x40,0x00,0x00]
+    , THU.testCase "biginteger-neg-65537" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger (-65537)))
+         in enc @=? Exts.fromList [0x26,0x83,0x7f,0x3f,0x7f,0x07]
+    , THU.testCase "biginteger-neg-9223372036854775808" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger (-9223372036854775808)))
+         in enc @=? Exts.fromList
+              [0x26,0x88,0x40,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00]
+    , THU.testCase "biginteger-9223372036854775807" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger 9223372036854775807))
+         in enc @=? Exts.fromList
+              [0x26,0x88,0x3f,0x7f,0x7f,0x7f,0x7f,0x7f,0x7f,0x7f,0x7f,0x01]
+    , THU.testCase "biginteger-1208925819614629174706175" $
+        -- Here, we are checking to make sure that we pad the beginning
+        -- of a Integer (the Jp# case) when the leading bit is 1.
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger 1208925819614629174706175))
+         in enc @=? Exts.fromList
+              [0x26,0x8b,0x00,0x3f,0x7f,0x7f,0x7f,0x7f
+              ,0x7f,0x7f,0x7f,0x7f,0x7f,0x7f,0x0f
+              ]
+    , THU.testCase "biginteger-neg-1208925819614629174706175" $
+        let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger (-1208925819614629174706175)))
+         in enc @=? Exts.fromList
+              [0x26,0x8b,0x7f,0x40,0x00,0x00,0x00,0x00
+              ,0x00,0x00,0x00,0x00,0x00,0x00,0x01
+              ]
+    ]
   , testGroup "smile-encode" $
     let mkTest name n = goldenVsFile name ("test/golden/"++n++"/expect.bin")
                                           ("test/golden/"++n++"/out.bin")
@@ -118,22 +163,36 @@ tests = testGroup "Tests"
           let json = case J.decode contents of
                 Left err -> error $ show err
                 Right it -> it
-              out = Smile.encodeSimple json
+              out = Smile.encode json
           withFile ("test/golden/"++n++"/out.bin") WriteMode $ \fp ->
             BChunks.hPut fp (Builder.run 2048 out)
      in
       [ mkTest "hello-world" "001"
       , mkTest "konnichiwa-minnasan" "002"
       , mkTest "konnichiwa-minnasan" "003"
-      , mkTest "\"sixty\"-char unicode string" "003"
-      , mkTest "\"sixty\"-char unicode keyname" "004"
+      , mkTest "sixtyish-char unicode string" "003"
+      , mkTest "sixtyish-char unicode keyname" "004"
       , mkTest "small numbers" "005"
       , mkTest "long positive decimal" "006"
       , mkTest "long negative decimal" "007"
       , mkTest "long positive integer" "008"
       , mkTest "long negative integer" "009"
-      , mkTest "scientific-notation Int-repr" "010"
-      , mkTest "scientific-notation negative-int-repr" "011"
+      , mkTest "scientific-notation medium-pos-int-repr" "010"
+      , mkTest "scientific-notation small-neg-int-repr" "011"
+      , mkTest "scientific-notation small-pos-int-repr" "012"
+      , mkTest "long-ascii" "013"
+      , mkTest "empty-key" "014"
+      , mkTest "number-100" "number/100"
+      , mkTest "number-1e31" "number/1e31"
+      , mkTest "number-1e32" "number/1e32"
+      , mkTest "number-1e50" "number/1e50"
+      , mkTest "number-1e62" "number/1e62"
+      , mkTest "number-1e63" "number/1e63"
+      , mkTest "number-1e64" "number/1e64"
+      , mkTest "number-1e126" "number/1e126"
+      , mkTest "number-1e127" "number/1e127"
+      , mkTest "number-1e128" "number/1e128"
+      , mkTest "number-1e129" "number/1e129"
       ]
   , THU.testCase "Twitter100" $
       case J.decode (Bytes.fromByteArray encodedTwitter100) of

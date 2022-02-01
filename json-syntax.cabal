@@ -38,6 +38,7 @@ library
     , bytesmith >=0.3.2 && <0.4
     , bytestring >=0.10.8 && <0.11
     , integer-gmp >=1.0 && <1.1
+    , natural-arithmetic >=0.1.2 && <0.2
     , contiguous >=0.6 && <0.7
     , primitive >=0.7 && <0.8
     , run-st >=0.1.1 && <0.2
