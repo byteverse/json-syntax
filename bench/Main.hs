@@ -4,6 +4,7 @@
 
 import Gauge.Main (defaultMain,bgroup,bench,whnf)
 
+import Metrics1024 (encodedMetrics1024)
 import Twitter100 (encodedTwitter100,byteStringTwitter100)
 import Url100 (encodedUrl100,byteStringUrl100)
 
@@ -23,6 +24,9 @@ main = do
   valueUrl100 <- case J.decode (Bytes.fromByteArray encodedUrl100) of
     Left _ -> fail "json-syntax failed to decode url-100"
     Right v -> pure v
+  valueMetrics1024 <- case J.decode (Bytes.fromByteArray encodedMetrics1024) of
+    Left _ -> fail "json-syntax failed to decode metrics-1024"
+    Right v -> pure v
   aesonValueTwitter100 <- case Aeson.decodeStrict' byteStringTwitter100 of
     Nothing -> fail "aeson failed to decode twitter-100"
     Just (v :: Aeson.Value) -> pure v
@@ -36,7 +40,7 @@ main = do
           , bench "encode" $ whnf
               (\v -> Chunks.length (BLDR.run 128 (J.encode v)))
               valueTwitter100
-          , bench "encode-smile-simple" $ whnf
+          , bench "encode-smile" $ whnf
               (\v -> Chunks.length (BLDR.run 128 (Smile.encode v)))
               valueTwitter100
           ]
@@ -49,9 +53,19 @@ main = do
           , bench "encode" $ whnf
               (\v -> Chunks.length (BLDR.run 128 (J.encode v)))
               valueUrl100
-          , bench "encode-smile-simple" $ whnf
+          , bench "encode-smile" $ whnf
               (\v -> Chunks.length (BLDR.run 128 (Smile.encode v)))
               valueUrl100
+          ]
+        ]
+      , bgroup "metrics"
+        [ bgroup "1024"
+          [ bench "encode" $ whnf
+              (\v -> Chunks.length (BLDR.run 128 (J.encode v)))
+              valueMetrics1024
+          , bench "encode-smile" $ whnf
+              (\v -> Chunks.length (BLDR.run 128 (Smile.encode v)))
+              valueMetrics1024
           ]
         ]
       ]
