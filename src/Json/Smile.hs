@@ -208,7 +208,7 @@ encodeNegWordBase256 !w = runByteArrayST $ do
 encodeAsciiString :: ShortText -> Builder
 encodeAsciiString !str
   | n == 0 = B.word8 0x20
-  | n <= 64 = B.word8 (0x40 + fromIntegral (n - 1)) <> B.shortTextUtf8 str
+  | n <= 64 = B.copyCons (0x40 + fromIntegral (n - 1)) (Bytes.fromShortByteString (TS.toShortByteString str))
   | otherwise = B.word8 0xe0 <> B.shortTextUtf8 str <> B.word8 0xFC
   where
   n = SBS.length (TS.toShortByteString str)
@@ -229,7 +229,7 @@ encodeString !str = case SBS.length (TS.toShortByteString str) of
 -- | Encode a key.
 encodeKey :: ShortText -> Builder
 {-# inline encodeKey #-}
-encodeKey str = case SBS.length (TS.toShortByteString str) of
+encodeKey !str = case SBS.length (TS.toShortByteString str) of
   0 -> B.word8 0x20
   n | n <= 64
     && TS.isAscii str

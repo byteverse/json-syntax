@@ -100,3 +100,4 @@ benchmark bench
   other-modules:
     Twitter100
     Url100
+    Metrics1024
