@@ -26,3 +26,4 @@ stack.yaml
 *.swp
 test_results/**
 cabal.project.local
+cabal.profile.project
