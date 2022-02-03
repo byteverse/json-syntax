@@ -26,12 +26,11 @@ import Control.Monad.ST.Run (runByteArrayST)
 import Data.Bits (countLeadingZeros,complement,unsafeShiftR,(.&.),(.|.))
 import Data.Bits (testBit)
 import Data.Bytes.Builder (Builder)
-import Data.Foldable (foldMap)
 import Data.Int (Int32)
 import Data.Primitive (ByteArray(ByteArray),newByteArray)
 import Data.Primitive (writeByteArray,byteArrayFromListN,sizeofByteArray)
 import Data.Primitive (MutableByteArray(..),unsafeFreezeByteArray)
-import Data.Primitive (readByteArray,copyMutableByteArray,indexByteArray)
+import Data.Primitive (readByteArray,copyMutableByteArray)
 import Data.Text.Short (ShortText)
 import Data.Word (Word8,Word32,Word64)
 import Data.Word.Zigzag (toZigzag32,toZigzag64)
@@ -45,7 +44,6 @@ import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Builder as B
 import qualified Data.Bytes.Builder.Bounded as Bounded
 import qualified Data.Bytes.Builder.Bounded.Unsafe as Unsafe
-import qualified Data.Bytes.Text.Ascii as Ascii
 import qualified Data.ByteString.Short as SBS
 import qualified Data.Number.Scientific as Sci
 import qualified Data.Text.Short as TS
@@ -56,46 +54,56 @@ import qualified Prelude
 -- | Encode a Json 'Value' to the Smile binary format.
 -- This encoder does not produce backreferences.
 encode :: Value -> Builder
-{-# noinline encode #-}
-encode v0 = header <> recurse v0
-  where
-  header = B.bytes $ Ascii.fromString ":)\n\x00"
-  recurse :: Value -> Builder
-  recurse (Object obj) = B.word8 0xFA <> foldMap recMember obj <> B.word8 0xFB
-  recurse (Array arr) = B.word8 0xF8 <> foldMap recurse arr <> B.word8 0xF9
-  recurse (String str) = encodeString str
-  recurse (Number x)
+{-# inline encode #-}
+encode v0 = B.ascii4 ':' ')' '\n' '\x00' <> encodeNoHeader v0
+
+-- The "rebuild" trick was adapted from the fast-builder library. It
+-- results in a 2x performance gain on the twitter benchmark.
+-- This function is marked noinline to ensure that its performance is
+-- stable.
+encodeNoHeader :: Value -> Builder
+{-# noinline encodeNoHeader #-}
+encodeNoHeader val = B.rebuild $ case val of
+  Object obj ->
+    B.word8 0xFA
+    <>
+    foldMap (\Member{key,value} -> encodeKey key <> encodeNoHeader value) obj
+    <>
+    B.word8 0xFB
+  Array arr -> B.word8 0xF8 <> foldMap encodeNoHeader arr <> B.word8 0xF9
+  String str -> encodeString str
+  Number x
     | Just i32 <- Sci.toInt32 x
     , -16 <= i32 && i32 <= 15
     , w5 <- fromIntegral @Word32 @Word8 (toZigzag32 i32)
-      = B.word8 (0xC0 + w5)
+      -> B.word8 (0xC0 + w5)
     | Just i32 <- Sci.toInt32 x
-      = B.fromBounded Nat.constant (Bounded.word8 0x24 `Bounded.append` vlqSmile64 (fromIntegral @Word32 @Word64 (toZigzag32 i32)))
+      -> B.fromBounded Nat.constant (Bounded.word8 0x24 `Bounded.append` vlqSmile64 (fromIntegral @Word32 @Word64 (toZigzag32 i32)))
     | Just i64 <- Sci.toInt64 x
-      = B.fromBounded Nat.constant (Bounded.word8 0x25 `Bounded.append` vlqSmile64 (toZigzag64 i64))
-    | otherwise = Sci.withExposed encodeSmallDecimal encodeBigDecimal x
-  recurse Null = B.word8 0x21
-  recurse False = B.word8 0x22
-  recurse True = B.word8 0x23
-  recMember :: Member -> Builder
-  recMember Member{key,value} = encodeKey key <> recurse value
-  encodeSmallDecimal :: Int -> Int -> Builder
-  encodeSmallDecimal !c !e = encodeBigDecimal (fromIntegral c) (fromIntegral e)
-  encodeBigDecimal :: Integer -> Integer -> Builder
-  encodeBigDecimal c e = case e of
-    0 -> encodeBigInteger c
-    _ -> B.word8 0x2A -- bigdecimal token tag
-      <> vlqSmile ( fromIntegral @Word32 @Natural
-                  $ toZigzag32 scale)
-      <> vlqSmile (fromIntegral @Int @Natural $ sizeofByteArray raw) -- size of byte digits
-      <> B.sevenEightSmile (Bytes.fromByteArray raw) -- 7/8 encoding of byte digits
-      where
-      scale :: Int32
-      -- WARNING smile can't handle exponents outside int32_t, so this truncates
-      -- WARNING "scale" is what Java BigDecimal thinks, which is
-      -- negative of all mathematics since exponential notation was invented 💩
-      scale = fromIntegral @Integer @Int32 (-e)
-      raw = integerToBase256ByteArray c
+      -> B.fromBounded Nat.constant (Bounded.word8 0x25 `Bounded.append` vlqSmile64 (toZigzag64 i64))
+    | otherwise -> Sci.withExposed encodeSmallDecimal encodeBigDecimal x
+  Null -> B.word8 0x21
+  False -> B.word8 0x22
+  True -> B.word8 0x23
+
+encodeSmallDecimal :: Int -> Int -> Builder
+encodeSmallDecimal !c !e = encodeBigDecimal (fromIntegral c) (fromIntegral e)
+
+encodeBigDecimal :: Integer -> Integer -> Builder
+encodeBigDecimal c e = case e of
+  0 -> encodeBigInteger c
+  _ -> B.word8 0x2A -- bigdecimal token tag
+    <> vlqSmile ( fromIntegral @Word32 @Natural
+                $ toZigzag32 scale)
+    <> vlqSmile (fromIntegral @Int @Natural $ sizeofByteArray raw) -- size of byte digits
+    <> B.sevenEightSmile (Bytes.fromByteArray raw) -- 7/8 encoding of byte digits
+    where
+    scale :: Int32
+    -- WARNING smile can't handle exponents outside int32_t, so this truncates
+    -- WARNING "scale" is what Java BigDecimal thinks, which is
+    -- negative of all mathematics since exponential notation was invented 💩
+    scale = fromIntegral @Integer @Int32 (-e)
+    raw = integerToBase256ByteArray c
 
 -- | Encode a number using as SMILE @BigInteger@ token type (prefix @0x26@).
 encodeBigInteger :: Integer -> Builder
@@ -215,7 +223,6 @@ encodeAsciiString !str
 
 -- | Encode a string.
 encodeString :: ShortText -> Builder
-{-# inline encodeString #-}
 encodeString !str = case SBS.length (TS.toShortByteString str) of
   0 -> B.word8 0x20
   n -> case TS.isAscii str of
@@ -228,7 +235,6 @@ encodeString !str = case SBS.length (TS.toShortByteString str) of
 
 -- | Encode a key.
 encodeKey :: ShortText -> Builder
-{-# inline encodeKey #-}
 encodeKey !str = case SBS.length (TS.toShortByteString str) of
   0 -> B.word8 0x20
   n | n <= 64

@@ -153,7 +153,8 @@ decode = P.parseBytesEither do
 
 -- | Encode a JSON syntax tree.
 encode :: Value -> BLDR.Builder
-encode = \case
+{-# noinline encode #-}
+encode v0 = BLDR.rebuild $ case v0 of
   True -> BLDR.ascii4 't' 'r' 'u' 'e'
   False -> BLDR.ascii5 'f' 'a' 'l' 's' 'e'
   Null -> BLDR.ascii4 'n' 'u' 'l' 'l'
