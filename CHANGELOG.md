@@ -1,5 +1,11 @@
 # Revision history for json-syntax
 
+## 0.2.1.0 -- 2022-03-01
+
+* Support Jackson's SMILE format as an encode target.
+* Use `bytebuild`'s `rebuild` function for 2x perf improvement on encode.
+* Bump bytebuild for buffer overflow fix.
+
 ## 0.2.0.0 -- 2021-03-22
 
 * Switch from `Chunks` to `SmallArray` in the `Object` and `Array` data
