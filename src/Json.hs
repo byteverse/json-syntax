@@ -53,7 +53,7 @@ import Data.Number.Scientific (Scientific)
 import Data.Primitive (ByteArray,MutableByteArray,SmallArray)
 import Data.Text.Short (ShortText)
 import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
-import GHC.Word (Word8(W8#),Word16(W16#))
+import GHC.Word.Compat
 
 import qualified Prelude
 import qualified Data.Builder.ST as B
