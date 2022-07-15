@@ -22,7 +22,8 @@ import qualified Data.Bytes.Chunks as BChunks
 import qualified Data.Bytes.Text.Ascii as Ascii
 import qualified Data.Bytes.Text.Latin1 as Latin1
 import qualified Data.ByteString as BS
-import qualified Data.HashMap.Strict as HM
+import qualified Data.Aeson.Key as Key
+import qualified Data.Aeson.KeyMap as M
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Text.Short as TS
 import qualified GHC.Exts as Exts
@@ -227,8 +228,8 @@ toAesonValue = \case
   J.String t -> AE.String (TS.toText t)
   J.Number n -> AE.Number (toBadSci n)
   J.Object mbrs -> AE.Object $ foldr
-    (\(J.Member key val) hm -> HM.insert (TS.toText key) (toAesonValue val) hm)
-    HM.empty mbrs
+    (\(J.Member key val) hm -> M.insert (Key.fromShortText key) (toAesonValue val) hm)
+    M.empty mbrs
   J.Array vals -> AE.Array $ Exts.fromList $ foldr
     (\x xs -> toAesonValue x : xs) [] vals
 

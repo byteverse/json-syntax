@@ -53,7 +53,7 @@ import Data.Number.Scientific (Scientific)
 import Data.Primitive (ByteArray,MutableByteArray,SmallArray)
 import Data.Text.Short (ShortText)
 import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
-import GHC.Word (Word8(W8#),Word16(W16#))
+import GHC.Word (Word8,Word16)
 
 import qualified Prelude
 import qualified Data.Builder.ST as B
@@ -67,6 +67,7 @@ import qualified Data.Bytes.Parser.Utf8 as Utf8
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.ByteString.Short.Internal as BSS
 import qualified Data.Bytes.Parser.Unsafe as Unsafe
+import qualified GHC.Word.Compat
 
 -- | The JSON syntax tree described by the ABNF in RFC 7159. Notable
 -- design decisions include:
@@ -342,7 +343,7 @@ string wrap !start = go 1 where
             let end = pos - 1
             let maxLen = end - start
             copyAndEscape wrap maxLen
-      W8# w -> go (canMemcpy .&. I# (ltWord# w 128##) .&. I# (gtWord# w 31##))
+      GHC.Word.Compat.W8# w -> go (canMemcpy .&. I# (ltWord# w 128##) .&. I# (gtWord# w 31##))
 
 copyAndEscape :: (ShortText -> a) -> Int -> Parser SyntaxException s a
 {-# inline copyAndEscape #-}
@@ -422,7 +423,7 @@ byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
 
 -- Precondition: Not in the range [U+D800 .. U+DFFF]
 w16ToChar :: Word16 -> Char
-w16ToChar (W16# w) = C# (chr# (word2Int# w))
+w16ToChar (GHC.Word.Compat.W16# w) = C# (chr# (word2Int# w))
 
 -- | Infix pattern synonym for 'Member'.
 pattern (:->) :: ShortText -> Value -> Member

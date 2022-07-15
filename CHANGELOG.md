@@ -1,5 +1,10 @@
 # Revision history for json-syntax
 
+## 0.2.2.0 -- 2022-07-15
+
+* Build with GHC 9.2.3.
+* Test suite now requires aeson >= 2.0 instead of < 2.0.
+
 ## 0.2.1.0 -- 2022-03-01
 
 * Support Jackson's SMILE format as an encode target.
