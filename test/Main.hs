@@ -109,6 +109,16 @@ tests = testGroup "Tests"
         case J.decode enc of
           Left e -> QC.counterexample (show e) False
           Right val1 -> val0 === val1
+    , THU.testCase "Q" $
+        -- Test that Unicode <right single quotation mark> is decoded correctly.
+        Right (J.String "It\2019s over now")
+        @=?
+        J.decode (shortTextToBytes "\"It\2019s over now\"")
+    , THU.testCase "R" $
+        -- Test that Unicode <right single quotation mark> is encoded correctly.
+        shortTextToBytes "\"It\2019s over now\""
+        @=?
+        BChunks.concat (Builder.run 4 (J.encode (J.String "It\2019s over now")))
     ]
   , testGroup "smile-fragment"
     [ THU.testCase "biginteger-65535" $
