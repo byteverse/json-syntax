@@ -1,13 +1,16 @@
 {-# language LambdaCase #-}
+{-# language MultiWayIf #-}
 {-# language OverloadedStrings #-}
 {-# language ScopedTypeVariables #-}
 
 import Control.Monad (when)
-import Data.Bytes (Bytes)
 import Data.ByteString.Short.Internal (ShortByteString(SBS))
+import Data.Bytes (Bytes)
 import Data.Primitive (ByteArray(ByteArray))
 import Data.Scientific (Scientific,scientific)
 import Data.Text.Short (ShortText)
+import Json.Flatten (flatten)
+import Person (encodedPerson,encodedFlattenedPerson)
 import System.IO (withFile,IOMode(..))
 import Test.QuickCheck ((===))
 import Test.Tasty (defaultMain,testGroup,TestTree)
@@ -217,6 +220,13 @@ tests = testGroup "Tests"
         Right j -> case J.decode (BChunks.concat (Builder.run 1 (J.encode j))) of
           Left _ -> fail "encode did not produce a document that could be decoded"
           Right j' -> when (j /= j') (fail "document was not the same after roundtrip")
+  , testGroup "flatten"
+      [ THU.testCase "Person" $ 
+          if | Right original <- J.decode (Bytes.fromByteArray encodedPerson)
+             , Right flattened <- J.decode (Bytes.fromByteArray encodedFlattenedPerson)
+               -> flattened @=? flatten '.' original
+             | otherwise -> fail "bad input from common/Person.hs"
+      ]
   ]
 
 jsonFromPrintableStrings :: [QC.PrintableString] -> J.Value

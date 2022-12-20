@@ -1,5 +1,9 @@
 # Revision history for json-syntax
 
+## 0.2.3.0 -- 2022-??-??
+
+* Add `Json.Flatten` module.
+
 ## 0.2.2.0 -- 2022-07-15
 
 * Build with GHC 9.2.3.
