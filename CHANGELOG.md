@@ -1,8 +1,10 @@
 # Revision history for json-syntax
 
-## 0.2.3.0 -- 2022-??-??
+## 0.2.3.0 -- 2022-03-22
 
 * Add `Json.Flatten` module.
+* Drop support for GHCs older than 9.0.
+* Replace integer-gmp with ghc-bignum.
 
 ## 0.2.2.0 -- 2022-07-15
 
