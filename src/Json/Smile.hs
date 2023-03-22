@@ -5,6 +5,7 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UnboxedTuples #-}
 
 module Json.Smile
   ( -- * Encode JSON Document
@@ -35,6 +36,8 @@ import Data.Primitive (readByteArray,copyMutableByteArray)
 import Data.Text.Short (ShortText)
 import Data.Word (Word8,Word32,Word64)
 import Data.Word.Zigzag (toZigzag32,toZigzag64)
+import GHC.Exts (RealWorld,Word#,State#)
+import GHC.IO (IO(IO))
 import GHC.Word (Word(..))
 import Json (Value(..), Member(..))
 import Numeric.Natural (Natural)
@@ -49,7 +52,8 @@ import qualified Data.ByteString.Short as SBS
 import qualified Data.Number.Scientific as Sci
 import qualified Data.Text.Short as TS
 import qualified GHC.Exts as Exts
-import qualified GHC.Integer.GMP.Internals as GMP
+import qualified GHC.Num.BigNat as BN
+import qualified GHC.Num.Integer as Integer
 import qualified Prelude
 
 -- | Encode a Json 'Value' to the Smile binary format.
@@ -118,11 +122,11 @@ integerToBase256ByteArray :: Integer -> ByteArray
 integerToBase256ByteArray c = if c == 0
   then byteArrayFromListN 1 [0::Word8]
   else case c of
-    GMP.Jp# bn -> unsafeDupablePerformIO $ do
-      let nDigits256 = fromIntegral @Word @Int (W# (GMP.sizeInBaseBigNat bn 256#))
+    Integer.IP bn -> unsafeDupablePerformIO $ do
+      let nDigits256 = fromIntegral @Word @Int (W# (BN.bigNatSizeInBase# 256## bn))
       mut <- newByteArray nDigits256
       let !(MutableByteArray mut#) = mut
-      !_ <- GMP.exportBigNatToMutableByteArray bn mut# 0## 1#
+      !_ <- liftWordIO (BN.bigNatToMutableByteArray# bn mut# 0## 1# )
       -- This is safe because Jp cannot have zero inside it.
       w0 :: Word8 <- readByteArray mut 0
       if testBit w0 7
@@ -134,17 +138,24 @@ integerToBase256ByteArray c = if c == 0
           copyMutableByteArray dst 1 mut 0 nDigits256
           unsafeFreezeByteArray dst
         else unsafeFreezeByteArray mut
-    GMP.Jn# bn -> twosComplementBigNat bn
-    GMP.S# i -> case i Exts.># 0# of
+    Integer.IN bn -> twosComplementBigNat bn
+    Integer.IS i -> case i Exts.># 0# of
       1# -> encodePosWordBase256 (W# (Exts.int2Word# i))
       _ -> encodeNegWordBase256 (W# (Exts.int2Word# i))
 
-twosComplementBigNat :: GMP.BigNat -> ByteArray
+liftWordIO :: (State# RealWorld -> (# State# RealWorld, Word# #)) -> IO Word
+{-# inline liftWordIO #-}
+liftWordIO f = IO
+  (\s -> case f s of
+    (# s', w #) -> (# s', W# w #)
+  )
+
+twosComplementBigNat :: BN.BigNat# -> ByteArray
 twosComplementBigNat bn = unsafeDupablePerformIO $ do
-  let nDigits256 = fromIntegral @Word @Int (W# (GMP.sizeInBaseBigNat bn 256#))
+  let nDigits256 = fromIntegral @Word @Int (W# (BN.bigNatSizeInBase# 256## bn))
   mut <- newByteArray nDigits256
   let !(MutableByteArray mut#) = mut
-  !_ <- GMP.exportBigNatToMutableByteArray bn mut# 0## 1#
+  !_ <- liftWordIO (BN.bigNatToMutableByteArray# bn mut# 0## 1# )
   -- First, complement
   let goComplement !ix = if ix >= 0
         then do
