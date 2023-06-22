@@ -38,7 +38,7 @@ library
     , byteslice >=0.2.9 && <0.3
     , bytesmith >=0.3.8 && <0.4
     , bytestring >=0.10.8 && <0.12
-    , natural-arithmetic >=0.1.2 && <0.2
+    , natural-arithmetic >=0.1.2 && <0.3
     , contiguous >=0.6 && <0.7
     , primitive >=0.7 && <0.10
     , run-st >=0.1.1 && <0.2
