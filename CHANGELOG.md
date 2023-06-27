@@ -1,5 +1,11 @@
 # Revision history for json-syntax
 
+## 0.2.4.0 -- 2023-??-??
+
+* Add typeclass `ToValue` for encoding.
+* Add functions `int`, `(int|word)(8|16|32|64)`, `bool` for constructing
+  objects.
+
 ## 0.2.3.0 -- 2022-03-22
 
 * Add `Json.Flatten` module.

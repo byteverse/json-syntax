@@ -16,6 +16,8 @@ module Json
     Value(..)
   , Member(..)
   , SyntaxException(..)
+    -- * Classes
+  , ToValue(..)
     -- * Functions
   , decode
   , encode
@@ -24,7 +26,18 @@ module Json
     -- * Constants
   , emptyArray
   , emptyObject
-    -- * Construction
+    -- * Value Construction
+  , int
+  , int8
+  , int16
+  , int32
+  , int64
+  , word8
+  , word16
+  , word32
+  , word64
+  , bool
+    -- * Object Construction
   , object1
   , object2
   , object3
@@ -50,10 +63,11 @@ import Data.Bytes.Parser (Parser)
 import Data.Bytes.Types (Bytes(..))
 import Data.Char (ord)
 import Data.Number.Scientific (Scientific)
-import Data.Primitive (ByteArray,MutableByteArray,SmallArray)
+import Data.Primitive (ByteArray,MutableByteArray,SmallArray,Array,PrimArray,Prim)
 import Data.Text.Short (ShortText)
 import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
-import GHC.Word (Word8,Word16)
+import GHC.Word (Word8,Word16,Word32,Word64)
+import GHC.Int (Int8,Int16,Int32,Int64)
 
 import qualified Prelude
 import qualified Data.Builder.ST as B
@@ -63,6 +77,7 @@ import qualified Data.Chunks as Chunks
 import qualified Data.Text.Short.Unsafe as TS
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Primitive as PM
+import qualified Data.Primitive.Contiguous as Contiguous
 import qualified Data.Bytes.Parser.Utf8 as Utf8
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.ByteString.Short.Internal as BSS
@@ -582,3 +597,68 @@ object12 a b c d e f g h i j k l = Object $ runSmallArrayST $ do
   PM.writeSmallArray dst 10 k
   PM.writeSmallArray dst 11 l
   PM.unsafeFreezeSmallArray dst
+
+word8 :: Word8 -> Json.Value
+{-# inline word8 #-}
+word8 = Json.Number . SCI.fromWord8
+
+word16 :: Word16 -> Json.Value
+{-# inline word16 #-}
+word16 = Json.Number . SCI.fromWord16
+
+word32 :: Word32 -> Json.Value
+{-# inline word32 #-}
+word32 = Json.Number . SCI.fromWord32
+
+word64 :: Word64 -> Json.Value
+{-# inline word64 #-}
+word64 = Json.Number . SCI.fromWord64
+
+int8 :: Int8 -> Json.Value
+{-# inline int8 #-}
+int8 = Json.Number . SCI.fromInt8
+
+int16 :: Int16 -> Json.Value
+{-# inline int16 #-}
+int16 = Json.Number . SCI.fromInt16
+
+int32 :: Int32 -> Json.Value
+{-# inline int32 #-}
+int32 = Json.Number . SCI.fromInt32
+
+int64 :: Int64 -> Json.Value
+{-# inline int64 #-}
+int64 = Json.Number . SCI.fromInt64
+
+int :: Int -> Json.Value
+{-# inline int #-}
+int = Json.Number . SCI.fromInt
+
+bool :: Prelude.Bool -> Json.Value
+{-# inline bool #-}
+bool Prelude.True = True
+bool _ = False
+
+class ToValue a where
+  toValue :: a -> Value
+
+instance ToValue Int where {toValue = int}
+instance ToValue Int8 where {toValue = int8}
+instance ToValue Int16 where {toValue = int16}
+instance ToValue Int32 where {toValue = int32}
+instance ToValue Int64 where {toValue = int64}
+instance ToValue Word8 where {toValue = word8}
+instance ToValue Word16 where {toValue = word16}
+instance ToValue Word32 where {toValue = word32}
+instance ToValue Word64 where {toValue = word64}
+instance ToValue ShortText where {toValue = String}
+instance ToValue Prelude.Bool where {toValue = bool}
+
+instance ToValue a => ToValue (SmallArray a) where
+  toValue !xs = Json.Array $! Contiguous.map' toValue xs
+
+instance ToValue a => ToValue (Array a) where
+  toValue !xs = Json.Array $! Contiguous.map' toValue xs
+
+instance (Prim a, ToValue a) => ToValue (PrimArray a) where
+  toValue !xs = Json.Array $! Contiguous.map' toValue xs
