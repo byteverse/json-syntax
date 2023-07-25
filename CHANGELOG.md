@@ -1,6 +1,14 @@
 # Revision history for json-syntax
 
-## 0.2.4.0 -- 2023-??-??
+## 0.2.5.0 -- 2023-07-25
+
+* Add `object(13|14|15|16|17)`.
+* Add `ToValue` instances for `Word`, `Text`, `Value`,
+  `Scientific`, list (i.e. `[]`), the unit type (i.e. `()`),
+* Add `text` and `shortText` for value construction.
+  
+
+## 0.2.4.0 -- 2023-06-27
 
 * Add typeclass `ToValue` for encoding.
 * Add functions `int`, `(int|word)(8|16|32|64)`, `bool` for constructing

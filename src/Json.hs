@@ -37,6 +37,8 @@ module Json
   , word32
   , word64
   , bool
+  , text
+  , shortText
     -- * Object Construction
   , object1
   , object2
@@ -50,12 +52,16 @@ module Json
   , object10
   , object11
   , object12
+  , object13
+  , object14
+  , object15
+  , object16
   ) where
 
 import Prelude hiding (Bool(True,False))
 
 import Control.Exception (Exception)
-import Control.Monad.ST (ST)
+import Control.Monad.ST (ST,runST)
 import Control.Monad.ST.Run (runSmallArrayST)
 import Data.Bits ((.&.),(.|.),unsafeShiftR)
 import Data.Builder.ST (Builder)
@@ -68,6 +74,7 @@ import Data.Text.Short (ShortText)
 import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
 import GHC.Word (Word8,Word16,Word32,Word64)
 import GHC.Int (Int8,Int16,Int32,Int64)
+import Data.Text (Text)
 
 import qualified Prelude
 import qualified Data.Builder.ST as B
@@ -82,6 +89,8 @@ import qualified Data.Bytes.Parser.Utf8 as Utf8
 import qualified Data.Bytes.Parser.Latin as Latin
 import qualified Data.ByteString.Short.Internal as BSS
 import qualified Data.Bytes.Parser.Unsafe as Unsafe
+import qualified Data.Text.Short as TS
+import qualified Data.List as List
 import qualified GHC.Word.Compat
 
 -- | The JSON syntax tree described by the ABNF in RFC 7159. Notable
@@ -598,6 +607,93 @@ object12 a b c d e f g h i j k l = Object $ runSmallArrayST $ do
   PM.writeSmallArray dst 11 l
   PM.unsafeFreezeSmallArray dst
 
+-- | Construct a JSON object with thirteen members.
+object13 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
+         -> Member -> Member -> Member -> Member -> Member -> Value
+{-# inline object13 #-}
+object13 a b c d e f g h i j k l m = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 13 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.writeSmallArray dst 8 i
+  PM.writeSmallArray dst 9 j
+  PM.writeSmallArray dst 10 k
+  PM.writeSmallArray dst 11 l
+  PM.writeSmallArray dst 12 m
+  PM.unsafeFreezeSmallArray dst
+
+-- | Construct a JSON object with fourteen members.
+object14 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
+         -> Member -> Member -> Member -> Member -> Member -> Member -> Value
+{-# inline object14 #-}
+object14 a b c d e f g h i j k l m n = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 14 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.writeSmallArray dst 8 i
+  PM.writeSmallArray dst 9 j
+  PM.writeSmallArray dst 10 k
+  PM.writeSmallArray dst 11 l
+  PM.writeSmallArray dst 12 m
+  PM.writeSmallArray dst 13 n
+  PM.unsafeFreezeSmallArray dst
+
+-- | Construct a JSON object with fifteen members.
+object15 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
+         -> Member -> Member -> Member -> Member -> Member -> Member -> Member -> Value
+{-# inline object15 #-}
+object15 a b c d e f g h i j k l m n o = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 14 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.writeSmallArray dst 8 i
+  PM.writeSmallArray dst 9 j
+  PM.writeSmallArray dst 10 k
+  PM.writeSmallArray dst 11 l
+  PM.writeSmallArray dst 12 m
+  PM.writeSmallArray dst 13 n
+  PM.writeSmallArray dst 14 o
+  PM.unsafeFreezeSmallArray dst
+
+-- | Construct a JSON object with sixteen members.
+object16 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
+         -> Member -> Member -> Member -> Member -> Member -> Member -> Member -> Member
+         -> Value
+{-# inline object16 #-}
+object16 a b c d e f g h i j k l m n o p = Object $ runSmallArrayST $ do
+  dst <- PM.newSmallArray 14 a
+  PM.writeSmallArray dst 1 b
+  PM.writeSmallArray dst 2 c
+  PM.writeSmallArray dst 3 d
+  PM.writeSmallArray dst 4 e
+  PM.writeSmallArray dst 5 f
+  PM.writeSmallArray dst 6 g
+  PM.writeSmallArray dst 7 h
+  PM.writeSmallArray dst 8 i
+  PM.writeSmallArray dst 9 j
+  PM.writeSmallArray dst 10 k
+  PM.writeSmallArray dst 11 l
+  PM.writeSmallArray dst 12 m
+  PM.writeSmallArray dst 13 n
+  PM.writeSmallArray dst 14 o
+  PM.writeSmallArray dst 15 p
+  PM.unsafeFreezeSmallArray dst
+
 word8 :: Word8 -> Json.Value
 {-# inline word8 #-}
 word8 = Json.Number . SCI.fromWord8
@@ -634,14 +730,27 @@ int :: Int -> Json.Value
 {-# inline int #-}
 int = Json.Number . SCI.fromInt
 
+text :: Text -> Json.Value
+{-# inline text #-}
+text = Json.String . TS.fromText
+
+shortText :: ShortText -> Json.Value
+{-# inline shortText #-}
+shortText = String
+
 bool :: Prelude.Bool -> Json.Value
 {-# inline bool #-}
 bool Prelude.True = True
 bool _ = False
 
+-- | Typeclass for types that can be encoded as JSON.
 class ToValue a where
   toValue :: a -> Value
 
+-- | Encodes the unit value as JSON @null@.
+instance ToValue () where {toValue _ = Null}
+instance ToValue Value where {toValue = id}
+instance ToValue Scientific where {toValue = Number}
 instance ToValue Int where {toValue = int}
 instance ToValue Int8 where {toValue = int8}
 instance ToValue Int16 where {toValue = int16}
@@ -651,8 +760,24 @@ instance ToValue Word8 where {toValue = word8}
 instance ToValue Word16 where {toValue = word16}
 instance ToValue Word32 where {toValue = word32}
 instance ToValue Word64 where {toValue = word64}
-instance ToValue ShortText where {toValue = String}
+instance ToValue ShortText where {toValue = shortText}
+instance ToValue Text where {toValue = text}
 instance ToValue Prelude.Bool where {toValue = bool}
+instance ToValue Word where
+ toValue = word64 . fromIntegral @Word @Word64
+
+instance ToValue a => ToValue [a] where
+  toValue !xs = runST $ do
+    let len = List.length xs
+    dst <- PM.newSmallArray len Null
+    let go !ix ys = case ys of
+          [] -> do
+            dst' <- PM.unsafeFreezeSmallArray dst
+            pure (Array dst')
+          z : zs -> do
+            PM.writeSmallArray dst ix $! toValue z
+            go (ix + 1) zs
+    go 0 xs
 
 instance ToValue a => ToValue (SmallArray a) where
   toValue !xs = Json.Array $! Contiguous.map' toValue xs
