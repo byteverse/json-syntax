@@ -123,6 +123,26 @@ tests = testGroup "Tests"
         @=?
         BChunks.concat (Builder.run 4 (J.encode (J.String "It\2019s over now")))
     ]
+  , testGroup "objectFromList"
+    [ THU.testCase "empty object" $
+        J.objectFromList []
+        @=?
+        J.emptyObject
+    , THU.testCase "one member" $
+        J.objectFromList [J.Member {J.key = "one", J.value = J.String "value1"}]
+        @=?
+        J.object1 J.Member {J.key = "one", J.value = J.String "value1"}
+    , THU.testCase "two members" $ do
+        let members = [
+              J.Member {J.key = "1", J.value = J.String "1"},
+              J.Member {J.key = "2", J.value = J.String "2"}
+              ]
+        J.objectFromList members
+        @=?
+        J.object2
+          J.Member {J.key = "1", J.value = J.String "1"}
+          J.Member {J.key = "2", J.value = J.String "2"}
+    ]
   , testGroup "smile-fragment"
     [ THU.testCase "biginteger-65535" $
         let enc = BChunks.concat (Builder.run 128 (Smile.encodeBigInteger 65535))

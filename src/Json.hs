@@ -40,6 +40,7 @@ module Json
   , text
   , shortText
     -- * Object Construction
+  , objectFromList
   , object1
   , object2
   , object3
@@ -452,6 +453,10 @@ w16ToChar (GHC.Word.Compat.W16# w) = C# (chr# (word2Int# w))
 -- | Infix pattern synonym for 'Member'.
 pattern (:->) :: ShortText -> Value -> Member
 pattern key :-> value = Member{key,value}
+
+-- | Construct a JSON object from a list of members.
+objectFromList :: [Member] -> Value
+objectFromList ms = Object $ PM.smallArrayFromList ms
 
 -- | Construct a JSON object with one member.
 object1 :: Member -> Value
