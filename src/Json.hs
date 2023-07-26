@@ -56,7 +56,7 @@ module Json
   , object13
   , object14
   , object15
-  , object16  
+  , object16
   ) where
 
 import Prelude hiding (Bool(True,False))
