@@ -39,6 +39,8 @@ module Json
   , bool
   , text
   , shortText
+    -- * Array Construction
+  , arrayFromList
     -- * Object Construction
   , objectFromList
   , object1
@@ -454,9 +456,87 @@ w16ToChar (GHC.Word.Compat.W16# w) = C# (chr# (word2Int# w))
 pattern (:->) :: ShortText -> Value -> Member
 pattern key :-> value = Member{key,value}
 
+-- | Construct a JSON array from a list of JSON values.
+--
+-- Unlike 'objectFromList', this is not currently equipped with a
+-- rewrite rule.
+arrayFromList :: [Value] -> Value
+arrayFromList ms = Array $ PM.smallArrayFromList ms
+
 -- | Construct a JSON object from a list of members.
+--
+-- Note: When the argument is a list literal with 16 or fewer elements,
+-- a rewrite rule transforms this into the appropriate @objectN@ function.
+-- When the argument is not a list literal, this function just calls
+-- @smallArrayFromList@ on the members, which has poor performance.
 objectFromList :: [Member] -> Value
 objectFromList ms = Object $ PM.smallArrayFromList ms
+
+{-# NOINLINE objectFromList #-}
+{-# RULES "objectFromList/1" forall a.
+      objectFromList (a : []) =
+      object1 a
+#-}
+{-# RULES "objectFromList/2" forall a b.
+      objectFromList (a : b : []) =
+      object2 a b
+#-}
+{-# RULES "objectFromList/3" forall a b c.
+      objectFromList (a : b : c : []) =
+      object3 a b c
+#-}
+{-# RULES "objectFromList/4" forall a b c d.
+      objectFromList (a : b : c : d : []) =
+      object4 a b c d
+#-}
+{-# RULES "objectFromList/5" forall a b c d e.
+      objectFromList (a : b : c : d : e : []) =
+      object5 a b c d e
+#-}
+{-# RULES "objectFromList/6" forall a b c d e f.
+      objectFromList (a : b : c : d : e : f : []) =
+      object6 a b c d e f
+#-}
+{-# RULES "objectFromList/7" forall a b c d e f g.
+      objectFromList (a : b : c : d : e : f : g : []) =
+      object7 a b c d e f g
+#-}
+{-# RULES "objectFromList/8" forall a b c d e f g h.
+      objectFromList (a : b : c : d : e : f : g : h : []) =
+      object8 a b c d e f g h
+#-}
+{-# RULES "objectFromList/9" forall a b c d e f g h i.
+      objectFromList (a : b : c : d : e : f : g : h : i : []) =
+      object9 a b c d e f g h i
+#-}
+{-# RULES "objectFromList/10" forall a b c d e f g h i j.
+      objectFromList (a : b : c : d : e : f : g : h : i : j : []) =
+      object10 a b c d e f g h i j
+#-}
+{-# RULES "objectFromList/11" forall a b c d e f g h i j k.
+      objectFromList (a : b : c : d : e : f : g : h : i : j : k : []) =
+      object11 a b c d e f g h i j k
+#-}
+{-# RULES "objectFromList/12" forall a b c d e f g h i j k l.
+      objectFromList (a : b : c : d : e : f : g : h : i : j : k : l : []) =
+      object12 a b c d e f g h i j k l
+#-}
+{-# RULES "objectFromList/13" forall a b c d e f g h i j k l m.
+      objectFromList (a : b : c : d : e : f : g : h : i : j : k : l : m : []) =
+      object13 a b c d e f g h i j k l m
+#-}
+{-# RULES "objectFromList/14" forall a b c d e f g h i j k l m n.
+      objectFromList (a : b : c : d : e : f : g : h : i : j : k : l : m : n : []) =
+      object14 a b c d e f g h i j k l m n
+#-}
+{-# RULES "objectFromList/15" forall a b c d e f g h i j k l m n o.
+      objectFromList (a : b : c : d : e : f : g : h : i : j : k : l : m : n : o : []) =
+      object15 a b c d e f g h i j k l m n o
+#-}
+{-# RULES "objectFromList/16" forall a b c d e f g h i j k l m n o p.
+      objectFromList (a : b : c : d : e : f : g : h : i : j : k : l : m : n : o : p : []) =
+      object16 a b c d e f g h i j k l m n o p
+#-}
 
 -- | Construct a JSON object with one member.
 object1 :: Member -> Value

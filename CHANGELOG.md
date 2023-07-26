@@ -1,5 +1,9 @@
 # Revision history for json-syntax
 
+## 0.2.6.0 -- 2023-07-26
+
+* Add `objectFromList` and `arrayFromList`.
+
 ## 0.2.5.0 -- 2023-07-25
 
 * Add `object(13|14|15|16|17)`.
