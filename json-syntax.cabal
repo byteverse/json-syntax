@@ -1,6 +1,6 @@
 cabal-version: 2.2
 name: json-syntax
-version: 0.2.6.0
+version: 0.2.6.1
 synopsis: High-performance JSON parser and encoder
 description:
   This library parses JSON into a @Value@ type that is consistent with the

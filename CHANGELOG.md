@@ -1,5 +1,9 @@
 # Revision history for json-syntax
 
+## 0.2.6.1 -- 2023-07-28
+
+* Correct implementations of `object15` and `object16`.
+
 ## 0.2.6.0 -- 2023-07-26
 
 * Add `objectFromList` and `arrayFromList`.

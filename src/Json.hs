@@ -738,7 +738,7 @@ object15 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -
          -> Member -> Member -> Member -> Member -> Member -> Member -> Member -> Value
 {-# inline object15 #-}
 object15 a b c d e f g h i j k l m n o = Object $ runSmallArrayST $ do
-  dst <- PM.newSmallArray 14 a
+  dst <- PM.newSmallArray 15 a
   PM.writeSmallArray dst 1 b
   PM.writeSmallArray dst 2 c
   PM.writeSmallArray dst 3 d
@@ -761,7 +761,7 @@ object16 :: Member -> Member -> Member -> Member -> Member -> Member -> Member -
          -> Value
 {-# inline object16 #-}
 object16 a b c d e f g h i j k l m n o p = Object $ runSmallArrayST $ do
-  dst <- PM.newSmallArray 14 a
+  dst <- PM.newSmallArray 16 a
   PM.writeSmallArray dst 1 b
   PM.writeSmallArray dst 2 c
   PM.writeSmallArray dst 3 d
