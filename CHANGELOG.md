@@ -1,5 +1,9 @@
 # Revision history for json-syntax
 
+## 0.2.7.0 -- 2023-??-??
+
+* Add `decodeNewlineDelimited`.
+
 ## 0.2.6.1 -- 2023-07-28
 
 * Correct implementations of `object15` and `object16`.

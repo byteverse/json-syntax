@@ -20,6 +20,7 @@ module Json
   , ToValue(..)
     -- * Functions
   , decode
+  , decodeNewlineDelimited
   , encode
     -- * Infix Synonyms 
   , pattern (:->)
@@ -78,9 +79,13 @@ import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
 import GHC.Word (Word8,Word16,Word32,Word64)
 import GHC.Int (Int8,Int16,Int32,Int64)
 import Data.Text (Text)
+import Data.Foldable (foldlM)
+import Control.Monad.Trans.Except (runExceptT,except)
+import Control.Monad.Trans.Class (lift)
 
 import qualified Prelude
 import qualified Data.Builder.ST as B
+import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Builder as BLDR
 import qualified Data.Bytes.Parser as P
 import qualified Data.Chunks as Chunks
@@ -142,6 +147,7 @@ data SyntaxException
   | InvalidNumber
   | LeadingZero
   | UnexpectedLeftovers
+  | PossibleOverflow
   deriving stock (Eq,Show)
   deriving anyclass (Exception)
 
@@ -172,12 +178,56 @@ isSpace w =
 
 -- | Decode a JSON syntax tree from a byte sequence.
 decode :: Bytes -> Either SyntaxException Value
-decode = P.parseBytesEither do
+{-# noinline decode #-}
+decode = P.parseBytesEither parser
+
+parser :: Parser SyntaxException s Value
+{-# inline parser #-}
+parser = do
   P.skipWhile isSpace
-  result <- Latin.any EmptyInput >>= parser
+  result <- Latin.any EmptyInput >>= parserStep
   P.skipWhile isSpace
   P.endOfInput UnexpectedLeftovers
   pure result
+
+-- | Decode newline-delimited JSON. Both the LF and the CRLF conventions
+-- are supported. The newline character (or character sequence) following
+-- the final object may be omitted. This also allows blanks lines consisting
+-- of only whitespace.
+--
+-- It's not strictly necessary for this to be a part of this library, but
+-- newline-delimited JSON is somewhat common in practice. It's nice to have
+-- this here instead of having to reimplement it in a bunch of different
+-- applications.
+--
+-- Note: To protect against malicious input, this reject byte sequences with
+-- more than 10 million newlines. If this is causing a problem for you, open
+-- an issue.
+--
+-- Other note: in the future, this function might be changed transparently
+-- to parallelize the decoding of large input (at least 1000 lines) with
+-- GHC sparks.
+decodeNewlineDelimited :: Bytes -> Either SyntaxException (SmallArray Value)
+{-# noinline decodeNewlineDelimited #-}
+decodeNewlineDelimited !everything =
+  let maxVals = Bytes.count 0x0A everything + 1
+   in if maxVals > 10000000
+        then Left PossibleOverflow
+        else runST $ runExceptT $ do
+          !dst <- PM.newSmallArray maxVals Null
+          !total <- foldlM
+            (\ !ix b ->
+              let clean = Bytes.dropWhile isSpace (Bytes.dropWhileEnd isSpace b)
+               in if Bytes.null clean
+                    then pure ix
+                    else do
+                      v <- except (decode clean)
+                      lift (PM.writeSmallArray dst ix v)
+                      pure (ix + 1)
+            ) 0 (Bytes.split 0x0A everything)
+          lift $ PM.shrinkSmallMutableArray dst total
+          dst' <- lift $ PM.unsafeFreezeSmallArray dst
+          pure dst'
 
 -- | Encode a JSON syntax tree.
 encode :: Value -> BLDR.Builder
@@ -229,9 +279,10 @@ foldrTail f z !ary = go 1 where
     = f x (go (i+1))
 
 -- Precondition: skip over all space before calling this.
--- It will not skip leading space for you. It does
-parser :: Char -> Parser SyntaxException s Value
-parser = \case
+-- It will not skip leading space for you. It does not skip
+-- over trailing space either.
+parserStep :: Char -> Parser SyntaxException s Value
+parserStep = \case
   '{' -> objectTrailedByBrace
   '[' -> arrayTrailedByBracket
   't' -> do
@@ -266,7 +317,7 @@ objectTrailedByBrace = do
       P.skipWhile isSpace
       Latin.char ExpectedColon ':'
       P.skipWhile isSpace
-      val <- Latin.any IncompleteObject >>= parser
+      val <- Latin.any IncompleteObject >>= parserStep
       let !mbr = Member theKey val
       !b0 <- P.effect B.new
       b1 <- P.effect (B.push mbr b0)
@@ -285,7 +336,7 @@ objectStep !b = do
       P.skipWhile isSpace
       Latin.char ExpectedColon ':'
       P.skipWhile isSpace
-      val <- Latin.any IncompleteObject >>= parser
+      val <- Latin.any IncompleteObject >>= parserStep
       let !mbr = Member theKey val
       P.effect (B.push mbr b) >>= objectStep
     '}' -> do
@@ -310,7 +361,7 @@ arrayTrailedByBracket = do
     ']' -> pure emptyArray
     c -> do
       !b0 <- P.effect B.new
-      val <- parser c
+      val <- parserStep c
       b1 <- P.effect (B.push val b0)
       arrayStep b1
 
@@ -328,7 +379,7 @@ arrayStep !b = do
   Latin.any IncompleteArray >>= \case
     ',' -> do
       P.skipWhile isSpace
-      val <- Latin.any IncompleteArray >>= parser
+      val <- Latin.any IncompleteArray >>= parserStep
       P.effect (B.push val b) >>= arrayStep
     ']' -> do
       !r <- P.effect (B.freeze b)
