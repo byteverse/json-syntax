@@ -22,6 +22,11 @@ module Json
   , decode
   , decodeNewlineDelimited
   , encode
+  , toChunks
+  , toShortText
+  , toText
+  , toBytes
+  , toByteArray
     -- * Infix Synonyms 
   , pattern (:->)
     -- * Constants
@@ -73,7 +78,7 @@ import Data.Bytes.Parser (Parser)
 import Data.Bytes.Types (Bytes(..))
 import Data.Char (ord)
 import Data.Number.Scientific (Scientific)
-import Data.Primitive (ByteArray,MutableByteArray,SmallArray,Array,PrimArray,Prim)
+import Data.Primitive (ByteArray(ByteArray),MutableByteArray,SmallArray,Array,PrimArray,Prim)
 import Data.Text.Short (ShortText)
 import GHC.Exts (Char(C#),Int(I#),gtWord#,ltWord#,word2Int#,chr#)
 import GHC.Word (Word8,Word16,Word32,Word64)
@@ -82,10 +87,12 @@ import Data.Text (Text)
 import Data.Foldable (foldlM)
 import Control.Monad.Trans.Except (runExceptT,except)
 import Control.Monad.Trans.Class (lift)
+import Data.Bytes.Chunks (Chunks)
 
 import qualified Prelude
 import qualified Data.Builder.ST as B
 import qualified Data.Bytes as Bytes
+import qualified Data.Bytes.Chunks as ByteChunks
 import qualified Data.Bytes.Builder as BLDR
 import qualified Data.Bytes.Parser as P
 import qualified Data.Chunks as Chunks
@@ -228,6 +235,27 @@ decodeNewlineDelimited !everything =
           lift $ PM.shrinkSmallMutableArray dst total
           dst' <- lift $ PM.unsafeFreezeSmallArray dst
           pure dst'
+
+toChunks :: Value -> Chunks
+{-# inline toChunks #-}
+toChunks = BLDR.run 512 . encode
+
+toBytes :: Value -> Bytes
+{-# inline toBytes #-}
+toBytes = ByteChunks.concat . toChunks
+
+toByteArray :: Value -> ByteArray
+{-# inline toByteArray #-}
+toByteArray = ByteChunks.concatU . toChunks
+
+toShortText :: Value -> ShortText
+{-# inline toShortText #-}
+toShortText v = case toByteArray v of
+  ByteArray x -> TS.fromShortByteStringUnsafe (BSS.SBS x)
+
+toText :: Value -> Text
+{-# inline toText #-}
+toText = TS.toText . toShortText
 
 -- | Encode a JSON syntax tree.
 encode :: Value -> BLDR.Builder

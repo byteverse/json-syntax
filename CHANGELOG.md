@@ -1,8 +1,9 @@
 # Revision history for json-syntax
 
-## 0.2.7.0 -- 2023-??-??
+## 0.2.7.0 -- 2023-10-05
 
 * Add `decodeNewlineDelimited`.
+* Add `toChunks`, `toBytes`, `toText`, `toShortText`, `toByteArray`.
 
 ## 0.2.6.1 -- 2023-07-28
 
