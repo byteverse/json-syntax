@@ -5,5 +5,5 @@ module Buildjson (tripleMember) where
 import qualified Json
 
 tripleMember :: Json.Member -> Json.Value
-{-# noinline tripleMember #-}
-tripleMember x = Json.objectFromList [x,x,x]
+{-# NOINLINE tripleMember #-}
+tripleMember x = Json.objectFromList [x, x, x]

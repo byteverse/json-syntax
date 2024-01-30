@@ -1,20 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+
 module Metrics1024
   ( encodedMetrics1024
   , byteStringMetrics1024
   ) where
 
 import Data.ByteString (ByteString)
-import Data.ByteString.Short (ShortByteString,toShort)
+import Data.ByteString.Short (ShortByteString, toShort)
 import Data.Primitive (ByteArray)
 import Data.Text.Encoding (encodeUtf8)
 import NeatInterpolation (text)
 
-import qualified Data.Primitive as PM
 import qualified Data.ByteString.Short.Internal as BSS
+import qualified Data.Primitive as PM
 
-shortByteStringToByteArray :: ShortByteString -> ByteArray 
+shortByteStringToByteArray :: ShortByteString -> ByteArray
 shortByteStringToByteArray (BSS.SBS x) = PM.ByteArray x
 
 encodedMetrics1024 :: ByteArray
@@ -22,8 +23,9 @@ encodedMetrics1024 =
   shortByteStringToByteArray (toShort byteStringMetrics1024)
 
 byteStringMetrics1024 :: ByteString
-byteStringMetrics1024 = encodeUtf8
-  [text|
+byteStringMetrics1024 =
+  encodeUtf8
+    [text|
     [ {"@id":"1E7nJ7Ki1ei1mSOuy","@service":"npm","@historical":false,"@timestamp":"2022-02-01T15:10:00Z","@row":"1","organization.acronym":"nyc","agent.type":"freight","host.address":"192.0.2.43","host.ip":"192.0.2.43","host.model":"unknown","host.model_oid":"1.3.6.1.4.1.14988.1","host.vendor":"mikrotik","component.cpu.utilization":0,"component.name":"","host.hostname":"NYC-S75-APT4215"}
     , {"@id":"1E7nJ7SponsUYpH9l","@service":"npm","@historical":false,"@timestamp":"2022-02-01T15:10:00Z","@row":"2","organization.acronym":"nyc","agent.type":"freight","host.address":"192.0.2.43","host.ip":"192.0.2.43","host.model":"unknown","host.model_oid":"1.3.6.1.4.1.14988.1","host.vendor":"mikrotik","component.cpu.utilization":0,"component.name":"","host.hostname":"NYC-S75-APT4215"}
     , {"@id":"1E7nJ7VyTvxK5KDVi","@service":"npm","@historical":false,"@timestamp":"2022-02-01T15:10:00Z","@row":"3","organization.acronym":"nyc","agent.type":"freight","host.address":"192.0.2.43","host.ip":"192.0.2.43","host.model":"unknown","host.model_oid":"1.3.6.1.4.1.14988.1","host.vendor":"mikrotik","component.cpu.utilization":0,"component.name":"","host.hostname":"NYC-S75-APT4215"}

@@ -1,20 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+
 module Url100
   ( encodedUrl100
   , byteStringUrl100
   ) where
 
 import Data.ByteString (ByteString)
-import Data.ByteString.Short (ShortByteString,toShort)
+import Data.ByteString.Short (ShortByteString, toShort)
 import Data.Primitive (ByteArray)
 import Data.Text.Encoding (encodeUtf8)
 import NeatInterpolation (text)
 
-import qualified Data.Primitive as PM
 import qualified Data.ByteString.Short.Internal as BSS
+import qualified Data.Primitive as PM
 
-shortByteStringToByteArray :: ShortByteString -> ByteArray 
+shortByteStringToByteArray :: ShortByteString -> ByteArray
 shortByteStringToByteArray (BSS.SBS x) = PM.ByteArray x
 
 encodedUrl100 :: ByteArray
@@ -22,8 +23,9 @@ encodedUrl100 =
   shortByteStringToByteArray (toShort byteStringUrl100)
 
 byteStringUrl100 :: ByteString
-byteStringUrl100 = encodeUtf8
-  [text|
+byteStringUrl100 =
+  encodeUtf8
+    [text|
     [ "https://balance.example.com/aunt.htm"
     , "http://anger.example.com/"
     , "https://www.example.edu/basket/branch#boat"
@@ -126,5 +128,3 @@ byteStringUrl100 = encodeUtf8
     , "http://attack.example.org/"
     ]
   |]
-
-

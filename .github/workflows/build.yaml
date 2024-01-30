@@ -1,0 +1,12 @@
+name: build
+on:
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  call-workflow:
+    uses: byteverse/.github/.github/workflows/build.yaml@main
+    secrets: inherit
+    with:
+      release: false

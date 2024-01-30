@@ -1,0 +1,12 @@
+name: release
+on:
+  push:
+    tags:
+      - "*"
+
+jobs:
+  call-workflow:
+    uses: byteverse/.github/.github/workflows/build.yaml@main
+    secrets: inherit
+    with:
+      release: true

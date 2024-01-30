@@ -1,9 +1,10 @@
-{-# language BangPatterns #-}
-{-# language DuplicateRecordFields #-}
-{-# language NamedFieldPuns #-}
+{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE DuplicateRecordFields #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
--- | Flatten nested JSON objects into a single JSON object in which the keys
--- have been joined by the separator.
+{- | Flatten nested JSON objects into a single JSON object in which the keys
+have been joined by the separator.
+-}
 module Json.Flatten
   ( flatten
   ) where
@@ -11,45 +12,46 @@ module Json.Flatten
 import Control.Monad.ST (ST)
 import Control.Monad.ST.Run (runByteArrayST)
 import Data.Builder.Catenable (Builder)
-import Data.ByteString.Short.Internal (ShortByteString(SBS))
-import Data.Text.Short (ShortText)
-import Data.Primitive (SmallArray,ByteArray(ByteArray),MutableByteArray)
-import Data.Word (Word8)
-import Json (Member(Member))
-import qualified Json
-import qualified Data.Chunks as Chunks
-import qualified Data.Primitive.Contiguous as C
+import qualified Data.Builder.Catenable as Builder
+import Data.ByteString.Short.Internal (ShortByteString (SBS))
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Text.Utf8 as Utf8
+import qualified Data.Chunks as Chunks
+import Data.Primitive (ByteArray (ByteArray), MutableByteArray, SmallArray)
 import qualified Data.Primitive as PM
-import qualified Data.Builder.Catenable as Builder
+import qualified Data.Primitive.Contiguous as C
+import Data.Text.Short (ShortText)
 import qualified Data.Text.Short as TS
 import qualified Data.Text.Short.Unsafe as TS
+import Data.Word (Word8)
+import Json (Member (Member))
+import qualified Json
 
--- | Flatten a json value, recursively descending into objects and joining
--- keys with the separator. For example:
---
--- > { "name": "bilbo"
--- > , "occupation":
--- >   { "name": "burglar"
--- >   , "start": "2022-05-30"
--- >   }
--- > , "height": 124
--- > , "favorites": ["adventures","lunch"]
--- > }
---
--- Becomes:
---
--- > { "name": "bilbo"
--- > , "occupation.name": "burglar"
--- > , "occupation.start": "2022-05-30"
--- > , "height": 124
--- > , "favorites": ["adventures","lunch"]
--- > }
---
--- Currently, the implementation of this function throws an exception if
--- any separator other than period is used. This may be corrected in a future
--- release.
+{- | Flatten a json value, recursively descending into objects and joining
+keys with the separator. For example:
+
+> { "name": "bilbo"
+> , "occupation":
+>   { "name": "burglar"
+>   , "start": "2022-05-30"
+>   }
+> , "height": 124
+> , "favorites": ["adventures","lunch"]
+> }
+
+Becomes:
+
+> { "name": "bilbo"
+> , "occupation.name": "burglar"
+> , "occupation.start": "2022-05-30"
+> , "height": 124
+> , "favorites": ["adventures","lunch"]
+> }
+
+Currently, the implementation of this function throws an exception if
+any separator other than period is used. This may be corrected in a future
+release.
+-}
 flatten :: Char -> Json.Value -> Json.Value
 flatten c v = case c of
   '.' -> flattenPeriod v
@@ -63,7 +65,7 @@ data ShortTexts
 flattenPeriod :: Json.Value -> Json.Value
 flattenPeriod x = case x of
   Json.Object mbrs ->
-    let bldr = foldMap (\Member{key,value} -> flattenPrefix (ShortTextsBase key) value) mbrs
+    let bldr = foldMap (\Member {key, value} -> flattenPrefix (ShortTextsBase key) value) mbrs
         chunks = Builder.run bldr
         result = Chunks.concat chunks
      in Json.Object result
@@ -71,25 +73,27 @@ flattenPeriod x = case x of
   _ -> x
 
 flattenPrefix ::
-     ShortTexts -- context accumulator
-  -> Json.Value
-  -> Builder Json.Member
+  ShortTexts -> -- context accumulator
+  Json.Value ->
+  Builder Json.Member
 flattenPrefix !pre x = case x of
   Json.Object mbrs -> flattenObject pre mbrs
   _ ->
     let !a = flattenPeriod x
         !k = runShortTexts pre
-        !mbr = Json.Member{key=k,value=a}
+        !mbr = Json.Member {key = k, value = a}
      in Builder.Cons mbr Builder.Empty
 
 flattenObject :: ShortTexts -> SmallArray Json.Member -> Builder Json.Member
-flattenObject !pre !mbrs = foldMap
-  (\Member{key,value} -> flattenPrefix (ShortTextsCons key pre) value
-  ) mbrs
+flattenObject !pre !mbrs =
+  foldMap
+    ( \Member {key, value} -> flattenPrefix (ShortTextsCons key pre) value
+    )
+    mbrs
 
 runShortTexts :: ShortTexts -> ShortText
 runShortTexts !ts0 = go 0 ts0
-  where
+ where
   paste :: MutableByteArray s -> Int -> ShortTexts -> ST s ByteArray
   paste !dst !ix (ShortTextsBase t) =
     let len = Bytes.length (Utf8.fromShortText t)
@@ -116,6 +120,6 @@ runShortTexts !ts0 = go 0 ts0
      in TS.fromShortByteStringUnsafe (SBS r)
 
 st2ba :: ShortText -> ByteArray
-{-# inline st2ba #-}
+{-# INLINE st2ba #-}
 st2ba t = case TS.toShortByteString t of
   SBS x -> ByteArray x
