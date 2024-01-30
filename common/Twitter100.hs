@@ -1,20 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+
 module Twitter100
   ( encodedTwitter100
   , byteStringTwitter100
   ) where
 
 import Data.ByteString (ByteString)
-import Data.ByteString.Short (ShortByteString,toShort)
+import Data.ByteString.Short (ShortByteString, toShort)
 import Data.Primitive (ByteArray)
 import Data.Text.Encoding (encodeUtf8)
 import NeatInterpolation (text)
 
-import qualified Data.Primitive as PM
 import qualified Data.ByteString.Short.Internal as BSS
+import qualified Data.Primitive as PM
 
-shortByteStringToByteArray :: ShortByteString -> ByteArray 
+shortByteStringToByteArray :: ShortByteString -> ByteArray
 shortByteStringToByteArray (BSS.SBS x) = PM.ByteArray x
 
 encodedTwitter100 :: ByteArray
@@ -22,8 +23,9 @@ encodedTwitter100 =
   shortByteStringToByteArray (toShort byteStringTwitter100)
 
 byteStringTwitter100 :: ByteString
-byteStringTwitter100 = encodeUtf8
-  [text|
+byteStringTwitter100 =
+  encodeUtf8
+    [text|
     {
         "completed_in": 1.000000,
         "max_id": 30121530767708160,
@@ -1864,4 +1866,3 @@ byteStringTwitter100 = encodeUtf8
         "since_id_str": "0"
     }
   |]
-

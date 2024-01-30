@@ -1,5 +1,9 @@
 # Revision history for json-syntax
 
+## 0.2.7.1 -- 2024-01-29
+
+* Update package metadata.
+
 ## 0.2.7.0 -- 2023-10-05
 
 * Add `decodeNewlineDelimited`.
@@ -19,7 +23,7 @@
 * Add `ToValue` instances for `Word`, `Text`, `Value`,
   `Scientific`, list (i.e. `[]`), the unit type (i.e. `()`),
 * Add `text` and `shortText` for value construction.
-  
+
 
 ## 0.2.4.0 -- 2023-06-27
 

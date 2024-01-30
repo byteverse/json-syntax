@@ -1,20 +1,21 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE QuasiQuotes #-}
+
 module Person
   ( encodedPerson
   , encodedFlattenedPerson
   ) where
 
 import Data.ByteString (ByteString)
-import Data.ByteString.Short (ShortByteString,toShort)
+import Data.ByteString.Short (ShortByteString, toShort)
 import Data.Primitive (ByteArray)
 import Data.Text.Encoding (encodeUtf8)
 import NeatInterpolation (text)
 
-import qualified Data.Primitive as PM
 import qualified Data.ByteString.Short.Internal as BSS
+import qualified Data.Primitive as PM
 
-shortByteStringToByteArray :: ShortByteString -> ByteArray 
+shortByteStringToByteArray :: ShortByteString -> ByteArray
 shortByteStringToByteArray (BSS.SBS x) = PM.ByteArray x
 
 encodedPerson :: ByteArray
@@ -26,8 +27,9 @@ encodedFlattenedPerson =
   shortByteStringToByteArray (toShort byteStringFlattenedPerson)
 
 byteStringPerson :: ByteString
-byteStringPerson = encodeUtf8
-  [text|
+byteStringPerson =
+  encodeUtf8
+    [text|
     { "name": "bilbo"
     , "occupation":
       { "name": "burglar"
@@ -39,8 +41,9 @@ byteStringPerson = encodeUtf8
   |]
 
 byteStringFlattenedPerson :: ByteString
-byteStringFlattenedPerson = encodeUtf8
-  [text|
+byteStringFlattenedPerson =
+  encodeUtf8
+    [text|
     { "name": "bilbo"
     , "occupation.name": "burglar"
     , "occupation.start": "2022-05-30"
@@ -48,4 +51,3 @@ byteStringFlattenedPerson = encodeUtf8
     , "favorites": ["adventures","lunch"]
     }
   |]
-
