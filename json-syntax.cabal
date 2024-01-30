@@ -1,7 +1,7 @@
-cabal-version:      2.2
-name:               json-syntax
-version:            0.2.7.0
-synopsis:           High-performance JSON parser and encoder
+cabal-version:   2.2
+name:            json-syntax
+version:         0.2.7.1
+synopsis:        High-performance JSON parser and encoder
 description:
   This library parses JSON into a @Value@ type that is consistent with the
   ABNF described in [RFC 7159](https://tools.ietf.org/html/rfc7159). The
@@ -15,16 +15,16 @@ description:
   library that offers users these conveniences open a issue so that the
   @json-syntax@ documentation can point users to it.
 
-homepage:           https://github.com/byteverse/json-syntax
-bug-reports:        https://github.com/byteverse/json-syntax/issues
-license:            BSD-3-Clause
-license-file:       LICENSE
-author:             Andrew Martin
-maintainer:         amartin@layer3com.com
-copyright:          2019 Andrew Martin
-category:           Data
-build-type:         Simple
-extra-source-files: CHANGELOG.md
+homepage:        https://github.com/byteverse/json-syntax
+bug-reports:     https://github.com/byteverse/json-syntax/issues
+license:         BSD-3-Clause
+license-file:    LICENSE
+author:          Andrew Martin
+maintainer:      amartin@layer3com.com
+copyright:       2019 Andrew Martin
+category:        Data
+build-type:      Simple
+extra-doc-files: CHANGELOG.md
 
 library
   exposed-modules:
@@ -33,23 +33,23 @@ library
     Json.Smile
 
   build-depends:
-    , array-builder        >=0.1     && <0.2
-    , array-chunks         >=0.1.3   && <0.2
-    , base                 >=4.15    && <5
-    , bytebuild            >=0.3.10  && <0.4
-    , byteslice            >=0.2.9   && <0.3
-    , bytesmith            >=0.3.8   && <0.4
-    , bytestring           >=0.10.8  && <0.12
-    , contiguous           >=0.6     && <0.7
-    , natural-arithmetic   >=0.1.2   && <0.3
-    , primitive            >=0.7     && <0.10
-    , run-st               >=0.1.1   && <0.2
-    , scientific-notation  >=0.1.6   && <0.2
-    , text                 >=2.0
-    , text-short           >=0.1.3   && <0.2
-    , transformers         >=0.5.6.2
-    , word-compat          >=0.0.3
-    , zigzag               >=0.0.1
+    , array-builder        >=0.1    && <0.2
+    , array-chunks         >=0.1.3  && <0.2
+    , base                 >=4.15   && <5
+    , bytebuild            >=0.3.10 && <0.4
+    , byteslice            >=0.2.9  && <0.3
+    , bytesmith            >=0.3.8  && <0.4
+    , bytestring           >=0.10.8 && <0.12
+    , contiguous           >=0.6    && <0.7
+    , natural-arithmetic   >=0.1.2  && <0.3
+    , primitive            >=0.7    && <0.10
+    , run-st               >=0.1.1  && <0.2
+    , scientific-notation  >=0.1.6  && <0.2
+    , text                 >=2.0.2  && <2.1
+    , text-short           >=0.1.3  && <0.2
+    , transformers         >=0.5.6  && <0.6
+    , word-compat          >=0.0.6  && <0.1
+    , zigzag               >=0.0.1  && <0.1
 
   hs-source-dirs:   src
   default-language: Haskell2010
@@ -83,7 +83,7 @@ test-suite test
     , tasty-golden         >=2.0      && <2.4
     , tasty-hunit          >=0.10.0.2 && <0.11
     , tasty-quickcheck     >=0.10.1.2 && <0.11
-    , text                 >=1.2
+    , text                 >=2.0.2    && <2.1
     , text-short
     , vector
 
@@ -100,7 +100,7 @@ benchmark bench
     , neat-interpolation   >=0.3.2
     , primitive
     , scientific-notation  >=0.1.1
-    , text                 >=1.2
+    , text                 >=2.0.2 && <2.1
 
   ghc-options:      -Wall -O2
   default-language: Haskell2010
