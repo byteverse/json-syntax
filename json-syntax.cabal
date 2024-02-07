@@ -1,6 +1,6 @@
 cabal-version:   2.2
 name:            json-syntax
-version:         0.2.7.1
+version:         0.2.7.2
 synopsis:        High-performance JSON parser and encoder
 description:
   This library parses JSON into a @Value@ type that is consistent with the
@@ -24,9 +24,18 @@ maintainer:      amartin@layer3com.com
 copyright:       2019 Andrew Martin
 category:        Data
 build-type:      Simple
-extra-doc-files: CHANGELOG.md
+extra-doc-files:
+  CHANGELOG.md
+  README.md
+
+tested-with:     GHC ==9.4.8 || ==9.6.3 || ==9.8.1
+
+common build-settings
+  default-language: Haskell2010
+  ghc-options:      -Wall -Wunused-packages
 
 library
+  import:          build-settings
   exposed-modules:
     Json
     Json.Flatten
@@ -45,50 +54,46 @@ library
     , primitive            >=0.7    && <0.10
     , run-st               >=0.1.1  && <0.2
     , scientific-notation  >=0.1.6  && <0.2
-    , text                 >=2.0.2  && <2.1
+    , text                 >=2.0.2  && <2.2
     , text-short           >=0.1.3  && <0.2
-    , transformers         >=0.5.6  && <0.6
+    , transformers         >=0.5.6  && <0.7
     , word-compat          >=0.0.6  && <0.1
     , zigzag               >=0.0.1  && <0.1
 
-  hs-source-dirs:   src
-  default-language: Haskell2010
-  ghc-options:      -Wall -O2
+  hs-source-dirs:  src
+  ghc-options:     -O2
 
 test-suite test
-  default-language: Haskell2010
-  type:             exitcode-stdio-1.0
-  hs-source-dirs:   test common
-  main-is:          Main.hs
+  import:         build-settings
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: test common
+  main-is:        Main.hs
   other-modules:
     Person
     Twitter100
 
-  ghc-options:      -Wall -O2
   build-depends:
     , aeson                >=2.0.2
-    , array-chunks
     , base                 >=4.12.0.0 && <5
     , bytebuild
     , byteslice            >=0.1.3
     , bytestring
-    , containers
     , json-syntax
     , neat-interpolation   >=0.3.2
     , primitive
     , QuickCheck           >=2.14.2
     , scientific
     , scientific-notation  >=0.1.1
-    , tasty                >=1.2.3    && <1.3
-    , tasty-golden         >=2.0      && <2.4
-    , tasty-hunit          >=0.10.0.2 && <0.11
-    , tasty-quickcheck     >=0.10.1.2 && <0.11
-    , text                 >=2.0.2    && <2.1
+    , tasty                >=1.2.3
+    , tasty-golden         >=2.0
+    , tasty-hunit          >=0.10.0.2
+    , tasty-quickcheck     >=0.10.1.2
+    , text                 >=2.0.2
     , text-short
-    , vector
 
 benchmark bench
-  type:             exitcode-stdio-1.0
+  import:         build-settings
+  type:           exitcode-stdio-1.0
   build-depends:
     , aeson
     , base
@@ -97,15 +102,13 @@ benchmark bench
     , bytestring
     , gauge
     , json-syntax
-    , neat-interpolation   >=0.3.2
+    , neat-interpolation  >=0.3.2
     , primitive
-    , scientific-notation  >=0.1.1
-    , text                 >=2.0.2 && <2.1
+    , text                >=2.0.2
 
-  ghc-options:      -Wall -O2
-  default-language: Haskell2010
-  hs-source-dirs:   bench common
-  main-is:          Main.hs
+  ghc-options:    -O2
+  hs-source-dirs: bench common
+  main-is:        Main.hs
   other-modules:
     Metrics1024
     Twitter100

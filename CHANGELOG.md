@@ -1,5 +1,11 @@
 # Revision history for json-syntax
 
+## 0.2.7.2 -- 2024-02-07
+
+* Fix build with GHC 9.8.
+* Bumped upper bound on `transformers` to <0.7.
+* Bumped upper bound on `text` to <2.2.
+
 ## 0.2.7.1 -- 2024-01-29
 
 * Update package metadata.
