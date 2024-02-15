@@ -6,6 +6,6 @@ on:
 
 jobs:
   call-workflow:
-    uses: byteverse/.github/.github/workflows/build-matrix.yaml@main
+    uses: byteverse/.github/.github/workflows/build-matrix.yaml@ci
     with:
       cabal-file: json-syntax.cabal
