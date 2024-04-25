@@ -123,6 +123,12 @@ tests = testGroup "Tests"
         @=?
         BChunks.concat (Builder.run 4 (J.encode (J.String "It\2019s over now")))
     ]
+  , testGroup "decodeNewlineDelimited"
+    [ THU.testCase "no-trailing-newline" $
+        Right (Exts.fromList [J.emptyObject, J.emptyObject])
+        @=?
+        J.decodeNewlineDelimited (shortTextToBytes "{}\n{}")
+    ]
   , testGroup "objectFromList"
     [ THU.testCase "empty object" $
         J.objectFromList []

@@ -217,7 +217,7 @@ newline-delimited JSON is somewhat common in practice. It's nice to have
 this here instead of having to reimplement it in a bunch of different
 applications.
 
-Note: To protect against malicious input, this reject byte sequences with
+Note: To protect against malicious input, this rejects byte sequences with
 more than 10 million newlines. If this is causing a problem for you, open
 an issue.
 
