@@ -1086,18 +1086,23 @@ instance ToValue Prelude.Bool where toValue = bool
 instance ToValue Word where
   toValue = word64 . fromIntegral @Word @Word64
 
+listToJsonValue :: ToValue a => [a] -> Value
+{-# noinline listToJsonValue #-}
+listToJsonValue xs = runST $ do
+  let len = List.length xs
+  dst <- PM.newSmallArray len Null
+  let go !ix ys = case ys of
+        [] -> do
+          dst' <- PM.unsafeFreezeSmallArray dst
+          pure (Array dst')
+        z : zs -> do
+          PM.writeSmallArray dst ix $! toValue z
+          go (ix + 1) zs
+  go 0 xs
+
 instance (ToValue a) => ToValue [a] where
-  toValue !xs = runST $ do
-    let len = List.length xs
-    dst <- PM.newSmallArray len Null
-    let go !ix ys = case ys of
-          [] -> do
-            dst' <- PM.unsafeFreezeSmallArray dst
-            pure (Array dst')
-          z : zs -> do
-            PM.writeSmallArray dst ix $! toValue z
-            go (ix + 1) zs
-    go 0 xs
+  {-# inline toValue #-}
+  toValue = listToJsonValue
 
 instance (ToValue a) => ToValue (SmallArray a) where
   toValue !xs = Json.Array $! Contiguous.map' toValue xs
