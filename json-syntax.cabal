@@ -28,7 +28,7 @@ extra-doc-files:
   CHANGELOG.md
   README.md
 
-tested-with:     ==9.6.3 || ==9.8.4
+tested-with:     ==9.6.3 || ==9.8.1
 
 common build-settings
   default-language: Haskell2010
