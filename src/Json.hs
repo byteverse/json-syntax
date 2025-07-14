@@ -1,12 +1,15 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MagicHash #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UnboxedTuples #-}
 
@@ -80,7 +83,7 @@ import Control.Monad.ST (ST, runST)
 import Control.Monad.ST.Run (runSmallArrayST)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (except, runExceptT)
-import Data.Bits (unsafeShiftR, (.&.), (.|.))
+import Data.Bits (unsafeShiftR, (.&.), (.|.), xor)
 import Data.Builder.ST (Builder)
 import Data.Bytes.Chunks (Chunks)
 import Data.Bytes.Parser (Parser)
@@ -89,11 +92,14 @@ import Data.Char (ord)
 import Data.Foldable (foldlM)
 import Data.Number.Scientific (Scientific)
 import Data.Primitive (Array, ByteArray (ByteArray), MutableByteArray, Prim, PrimArray, SmallArray)
-import Data.Text (Text)
+import Data.Text.Internal (Text(Text))
 import Data.Text.Short (ShortText)
-import GHC.Exts (Char (C#), Int (I#), chr#, gtWord#, ltWord#, word2Int#)
+import GHC.Exts (Char (C#), Int (I#), chr#, gtWord#, ltWord#, word2Int#, minusWord#)
+import GHC.Exts (Int#, ByteArray#, word8ToWord#, word16ToWord#)
+import GHC.Exts (RuntimeRep(IntRep,TupleRep,BoxedRep), Levity(Unlifted))
+import GHC.Exts (and#, xor#)
 import GHC.Int (Int16, Int32, Int64, Int8)
-import GHC.Word (Word16, Word32, Word64, Word8)
+import GHC.Word (Word16(W16#), Word32, Word64, Word8(W8#), Word(W#))
 
 import qualified Data.Builder.ST as B
 import qualified Data.ByteString.Short.Internal as BSS
@@ -109,10 +115,11 @@ import qualified Data.List as List
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Primitive as PM
 import qualified Data.Primitive.Contiguous as Contiguous
+import qualified Data.Text
 import qualified Data.Text.Short as TS
 import qualified Data.Text.Short.Unsafe as TS
-import qualified GHC.Word.Compat
 import qualified Prelude
+import qualified Data.Bytes.Parser.Rebindable as RB
 
 {- | The JSON syntax tree described by the ABNF in RFC 7159. Notable
 design decisions include:
@@ -122,18 +129,11 @@ design decisions include:
   This improves performance when decoding the syntax tree to a @Bool@.
 * @Object@ uses an association list rather than a hash map. This is
   the data type that key-value pairs can be parsed into most cheaply.
-* @Object@ and @Array@ both use 'Chunks' rather than using @SmallArray@
-  or cons-list directly. This a middle ground between those two types. We
-  get the efficent use of cache lines that @SmallArray@ offers, and we get
-  the worst-case @O(1)@ appends that cons-list offers. Users will typically
-  fold over the elements with the @Foldable@ instance of 'Chunks', although
-  there are functions in @Data.Chunks@ that efficently perform other
-  operations.
 -}
 data Value
   = Object !(SmallArray Member)
   | Array !(SmallArray Value)
-  | String {-# UNPACK #-} !ShortText
+  | String {-# UNPACK #-} !Text
   | Number {-# UNPACK #-} !Scientific
   | Null
   | True
@@ -170,7 +170,7 @@ data SyntaxException
 taken from section 4 of RFC 7159.
 -}
 data Member = Member
-  { key :: {-# UNPACK #-} !ShortText
+  { key :: {-# UNPACK #-} !Text
   , value :: !Value
   }
   deriving stock (Eq, Show)
@@ -201,9 +201,9 @@ decode = P.parseBytesEither parser
 parser :: Parser SyntaxException s Value
 {-# INLINE parser #-}
 parser = do
-  P.skipWhile isSpace
+  optimizedSkipSpace
   result <- Latin.any EmptyInput >>= parserStep
-  P.skipWhile isSpace
+  optimizedSkipSpace
   P.endOfInput UnexpectedLeftovers
   pure result
 
@@ -278,7 +278,7 @@ encode v0 = BLDR.rebuild $ case v0 of
   True -> BLDR.ascii4 't' 'r' 'u' 'e'
   False -> BLDR.ascii5 'f' 'a' 'l' 's' 'e'
   Null -> BLDR.ascii4 'n' 'u' 'l' 'l'
-  String s -> BLDR.shortTextJsonString s
+  String s -> BLDR.textJsonString s
   Number n -> SCI.builderUtf8 n
   Array ys -> case PM.sizeofSmallArray ys of
     0 -> BLDR.ascii2 '[' ']'
@@ -305,24 +305,25 @@ encode v0 = BLDR.rebuild $ case v0 of
 
 encodeMember :: Member -> BLDR.Builder
 encodeMember Member {key, value} =
-  BLDR.shortTextJsonString key
+  BLDR.textJsonString key
     <> BLDR.ascii ':'
     <> encode value
 
 foldrTail :: (a -> b -> b) -> b -> PM.SmallArray a -> b
 {-# INLINE foldrTail #-}
-foldrTail f z !ary = go 1
+foldrTail f z !ary = goFoldrTail 1
  where
   !sz = PM.sizeofSmallArray ary
-  go i
+  goFoldrTail i
     | i == sz = z
     | (# x #) <- PM.indexSmallArray## ary i =
-        f x (go (i + 1))
+        f x (goFoldrTail (i + 1))
 
 -- Precondition: skip over all space before calling this.
 -- It will not skip leading space for you. It does not skip
 -- over trailing space either.
 parserStep :: Char -> Parser SyntaxException s Value
+{-# NOINLINE parserStep #-}
 parserStep = \case
   '{' -> objectTrailedByBrace
   '[' -> arrayTrailedByBracket
@@ -337,7 +338,7 @@ parserStep = \case
     pure Null
   '"' -> do
     start <- Unsafe.cursor
-    string String start
+    string start `P.bindFromByteArrayIntIntToLifted` \ !(# arr, off, len #) -> pure (String (Text (ByteArray arr) (I# off) (I# len)))
   '-' -> fmap Number (SCI.parserNegatedUtf8Bytes InvalidNumber)
   '0' ->
     Latin.trySatisfy (\c -> c >= '0' && c <= '9') >>= \case
@@ -351,34 +352,55 @@ parserStep = \case
 objectTrailedByBrace :: Parser SyntaxException s Value
 {-# INLINE objectTrailedByBrace #-}
 objectTrailedByBrace = do
-  P.skipWhile isSpace
+  optimizedSkipSpace
   Latin.any IncompleteObject >>= \case
     '}' -> pure emptyObject
     '"' -> do
       start <- Unsafe.cursor
-      !theKey <- string id start
-      P.skipWhile isSpace
-      Latin.char ExpectedColon ':'
-      P.skipWhile isSpace
-      val <- Latin.any IncompleteObject >>= parserStep
-      let !mbr = Member theKey val
-      !b0 <- P.effect B.new
-      b1 <- P.effect (B.push mbr b0)
-      objectStep b1
+      string start `P.bindFromByteArrayIntIntToLifted` \ !(# arr, off, len #) -> do
+        let theKey = Text (ByteArray arr) (I# off) (I# len)
+        optimizedSkipSpace
+        Latin.char ExpectedColon ':'
+        optimizedSkipSpace
+        val <- Latin.any IncompleteObject >>= parserStep
+        let !mbr = Member theKey val
+        !b0 <- P.effect B.new
+        b1 <- P.effect (B.push mbr b0)
+        objectStep b1
     _ -> P.fail ExpectedQuoteOrRightBrace
+
+optimizedSkipSpace :: Parser SyntaxException s ()
+{-# noinline optimizedSkipSpace #-}
+optimizedSkipSpace = do
+  let goOptimizedSkipSpace = do
+        result <- Latin.trySatisfy
+          (\c -> case c of
+            ' ' -> Prelude.True
+            _ -> if c > ' '
+              then Prelude.False
+              else case c of
+                '\r' -> Prelude.True
+                '\t' -> Prelude.True
+                '\n' -> Prelude.True
+                _ -> Prelude.False
+          )
+        case result of
+          Prelude.True -> goOptimizedSkipSpace
+          Prelude.False -> pure ()
+  goOptimizedSkipSpace
 
 objectStep :: Builder s Member -> Parser SyntaxException s Value
 objectStep !b = do
-  P.skipWhile isSpace
+  optimizedSkipSpace
   Latin.any IncompleteObject >>= \case
     ',' -> do
-      P.skipWhile isSpace
+      optimizedSkipSpace
       Latin.char ExpectedQuote '"'
       start <- Unsafe.cursor
-      !theKey <- string id start
-      P.skipWhile isSpace
+      !theKey <- P.bindFromByteArrayIntIntToLifted (string start) (\(# arr, off, len #) -> pure (Text (ByteArray arr) (I# off) (I# len)))
+      optimizedSkipSpace
       Latin.char ExpectedColon ':'
-      P.skipWhile isSpace
+      optimizedSkipSpace
       val <- Latin.any IncompleteObject >>= parserStep
       let !mbr = Member theKey val
       P.effect (B.push mbr b) >>= objectStep
@@ -399,7 +421,7 @@ objectStep !b = do
 arrayTrailedByBracket :: Parser SyntaxException s Value
 {-# INLINE arrayTrailedByBracket #-}
 arrayTrailedByBracket = do
-  P.skipWhile isSpace
+  optimizedSkipSpace
   Latin.any IncompleteArray >>= \case
     ']' -> pure emptyArray
     c -> do
@@ -418,10 +440,10 @@ arrayTrailedByBracket = do
 -- > *( value-separator value )
 arrayStep :: Builder s Value -> Parser SyntaxException s Value
 arrayStep !b = do
-  P.skipWhile isSpace
+  optimizedSkipSpace
   Latin.any IncompleteArray >>= \case
     ',' -> do
-      P.skipWhile isSpace
+      optimizedSkipSpace
       val <- Latin.any IncompleteArray >>= parserStep
       P.effect (B.push val b) >>= arrayStep
     ']' -> do
@@ -431,146 +453,209 @@ arrayStep !b = do
     _ -> P.fail ExpectedCommaOrRightBracket
 
 c2w :: Char -> Word8
+{-# INLINE c2w #-}
 c2w = fromIntegral . ord
 
--- This is adapted from the function bearing the same name
--- in json-tokens. If you find a problem with it, then
--- something if wrong in json-tokens as well.
---
--- TODO: Quit doing this CPS and inline nonsense. We should
--- be able to unbox the resulting ShortText as ByteArray# and
--- mark the function as NOINLINE. This would prevent the generated
--- code from being needlessly duplicated in three different places.
-string :: (ShortText -> a) -> Int -> Parser SyntaxException s a
-{-# INLINE string #-}
-string wrap !start = go 1
+string :: forall s. Int -> Parser SyntaxException s (# ByteArray#, Int#, Int# #)
+{-# NOINLINE string #-}
+string !start@(I# start# ) = goShare
  where
-  go !canMemcpy = do
-    P.any IncompleteString >>= \case
-      92 -> P.any InvalidEscapeSequence *> go 0 -- backslash
-      34 -> do
-        -- double quote
-        !pos <- Unsafe.cursor
-        case canMemcpy of
-          1 -> do
-            src <- Unsafe.expose
-            str <- P.effect $ do
-              let end = pos - 1
-              let len = end - start
-              dst <- PM.newByteArray len
-              PM.copyByteArray dst 0 src start len
-              PM.unsafeFreezeByteArray dst
-            pure (wrap (TS.fromShortByteStringUnsafe (byteArrayToShortByteString str)))
-          _ -> do
-            Unsafe.unconsume (pos - start)
-            let end = pos - 1
-            let maxLen = end - start
-            copyAndEscape wrap maxLen
-      GHC.Word.Compat.W8# w -> go (canMemcpy .&. I# (ltWord# w 128##) .&. I# (gtWord# w 31##))
+  goNoShare :: Parser SyntaxException s (# ByteArray#, Int#, Int# #)
+  goNoShare = do
+    P.any IncompleteString `P.bindFromLiftedToByteArrayIntInt` \theChar -> case theChar of
+      92 -> P.any InvalidEscapeSequence `P.bindFromLiftedToByteArrayIntInt` \_ -> goNoShare -- backslash
+      34 ->
+        -- double quote (string is finished)
+        Unsafe.cursor `P.bindFromLiftedToByteArrayIntInt` \ !pos ->
+        Unsafe.unconsume (pos - start) `P.bindFromLiftedToByteArrayIntInt` \ !_ ->
+        let end = pos - 1
+            maxLen = end - start
+         in copyAndEscape# maxLen
+      _ -> goNoShare
+  goShare :: Parser SyntaxException s (# ByteArray#, Int#, Int# #)
+  goShare = do
+    P.any IncompleteString `P.bindFromLiftedToByteArrayIntInt` \theChar -> case theChar of
+      92 -> P.any InvalidEscapeSequence `P.bindFromLiftedToByteArrayIntInt` \_ -> goNoShare -- backslash
+      34 ->
+        -- double quote (string is finished)
+        Unsafe.cursor `P.bindFromLiftedToByteArrayIntInt` \ !pos ->
+        Unsafe.expose `P.bindFromLiftedToByteArrayIntInt` \ !(ByteArray src) ->
+        let !end = pos - 1
+            !(I# len) = end - start
+         in P.pureByteArrayIntInt (# src, start#, len #)
+      W8# w ->
+        let !w' = minusWord# (word8ToWord# w) 32##
+         in case ltWord# w' 96## of
+              1# -> goShare
+              _ -> goNoShare
 
-copyAndEscape :: (ShortText -> a) -> Int -> Parser SyntaxException s a
-{-# INLINE copyAndEscape #-}
-copyAndEscape wrap !maxLen = do
-  !dst <- P.effect (PM.newByteArray maxLen)
-  let go !ix =
-        Utf8.any# IncompleteString `P.bindFromCharToLifted` \c -> case c of
-          '\\'# ->
-            Latin.any IncompleteEscapeSequence >>= \case
-              '"' -> do
-                P.effect (PM.writeByteArray dst ix (c2w '"'))
-                go (ix + 1)
-              '\\' -> do
-                P.effect (PM.writeByteArray dst ix (c2w '\\'))
-                go (ix + 1)
-              't' -> do
-                P.effect (PM.writeByteArray dst ix (c2w '\t'))
-                go (ix + 1)
-              'n' -> do
-                P.effect (PM.writeByteArray dst ix (c2w '\n'))
-                go (ix + 1)
-              'r' -> do
-                P.effect (PM.writeByteArray dst ix (c2w '\r'))
-                go (ix + 1)
-              '/' -> do
-                P.effect (PM.writeByteArray dst ix (c2w '/'))
-                go (ix + 1)
-              'b' -> do
-                P.effect (PM.writeByteArray dst ix (c2w '\b'))
-                go (ix + 1)
-              'f' -> do
-                P.effect (PM.writeByteArray dst ix (c2w '\f'))
-                go (ix + 1)
-              'u' -> do
-                w <- Latin.hexFixedWord16 InvalidEscapeSequence
-                if w >= 0xD800 && w < 0xDFFF
-                  then go =<< P.effect (encodeUtf8Char dst ix '\xFFFD')
-                  else go =<< P.effect (encodeUtf8Char dst ix (w16ToChar w))
-              _ -> P.fail InvalidEscapeSequence
-          '"'# -> do
-            str <-
-              P.effect
-                (PM.unsafeFreezeByteArray =<< PM.resizeMutableByteArray dst ix)
-            pure (wrap (TS.fromShortByteStringUnsafe (byteArrayToShortByteString str)))
-          _ -> go =<< P.effect (encodeUtf8Char dst ix (C# c))
-  go 0
+copyAndEscape# :: forall s. Int -> Parser @('TupleRep '[ 'BoxedRep 'Unlifted, 'IntRep, 'IntRep ]) SyntaxException s (# ByteArray#, Int#, Int# #)
+{-# noinline copyAndEscape# #-}
+copyAndEscape# !maxLen =
+  (P.effect (PM.newByteArray maxLen))
+  `P.bindFromLiftedToByteArrayIntInt` \dst ->
+  let goCopyAndEscape :: Int -> Parser @('TupleRep '[ 'BoxedRep 'Unlifted, 'IntRep, 'IntRep ]) SyntaxException s (# ByteArray#, Int#, Int# #)
+      goCopyAndEscape !ix@(I# ix#) =
+        P.any IncompleteString `P.bindFromLiftedToByteArrayIntInt` \theCharW -> case theCharW of
+          -- Backslash
+          0x5C -> Latin.any IncompleteEscapeSequence `P.bindFromLiftedToByteArrayIntInt` \escapedChar -> case escapedChar of
+            '"' ->
+              (P.effect (PM.writeByteArray dst ix (c2w '"')))
+              `P.bindFromLiftedToByteArrayIntInt` \_ ->
+              goCopyAndEscape (ix + 1)
+            '\\' ->
+              (P.effect (PM.writeByteArray dst ix (c2w '\\')))
+              `P.bindFromLiftedToByteArrayIntInt` \_ ->
+              goCopyAndEscape (ix + 1)
+            't' ->
+              (P.effect (PM.writeByteArray dst ix (c2w '\t')))
+              `P.bindFromLiftedToByteArrayIntInt` \_ ->
+              goCopyAndEscape (ix + 1)
+            'n' ->
+              (P.effect (PM.writeByteArray dst ix (c2w '\n')))
+              `P.bindFromLiftedToByteArrayIntInt` \_ ->
+              goCopyAndEscape (ix + 1)
+            'r' ->
+              (P.effect (PM.writeByteArray dst ix (c2w '\r')))
+              `P.bindFromLiftedToByteArrayIntInt` \_ ->
+              goCopyAndEscape (ix + 1)
+            '/' ->
+              (P.effect (PM.writeByteArray dst ix (c2w '/')))
+              `P.bindFromLiftedToByteArrayIntInt` \_ ->
+              goCopyAndEscape (ix + 1)
+            'b' ->
+              (P.effect (PM.writeByteArray dst ix (c2w '\b')))
+              `P.bindFromLiftedToByteArrayIntInt` \_ ->
+              goCopyAndEscape (ix + 1)
+            'f' ->
+              (P.effect (PM.writeByteArray dst ix (c2w '\f')))
+              `P.bindFromLiftedToByteArrayIntInt` \_ ->
+              goCopyAndEscape (ix + 1)
+            'u' ->
+              Latin.hexFixedWord16# InvalidEscapeSequence
+              `P.bindFromWordToByteArrayIntInt` \w ->
+              ( case (w `and#` 0b1111_1000_0000_0000## ) `xor#` 0b1101_1000_0000_0000## of
+                  0## -> P.bindFromLiftedToByteArrayIntInt
+                    ( P.effect $ do
+                        -- We replace anything in the range U+D800-U+DFFF with U+FFFD
+                        -- Note: UTF8 encoding of character U+FFFD is: 0xEF 0xBF 0xBD,
+                        -- so we just inline it directly.
+                        PM.writeByteArray dst ix (0xEF :: Word8)
+                        PM.writeByteArray dst (ix + 1) (0xBF :: Word8)
+                        PM.writeByteArray dst (ix + 2) (0xBD :: Word8)
+                        pure (ix + 3)
+                    ) goCopyAndEscape
+                  _ -> P.bindFromLiftedToByteArrayIntInt (P.effect (encodeUtf8CharBmp dst ix (W# w))) goCopyAndEscape
+              )
+            _ -> P.failByteArrayIntInt InvalidEscapeSequence
+          -- Double quote (terminates string)
+          0x22 ->
+            (P.effect (PM.unsafeFreezeByteArray =<< PM.resizeMutableByteArray dst ix))
+            `P.bindFromLiftedToByteArrayIntInt` \str ->
+            P.pureByteArrayIntInt $ case byteArrayToShortByteString str of
+              BSS.SBS str' -> -- error ("Escaped string: " ++ Data.Text.unpack (Text (ByteArray str') 0 (I# ix#)))
+                (# str', 0#, ix# #)
+          _ | theCharW >= 0x20, theCharW < 127 -> 
+                (P.effect (PM.writeByteArray dst ix theCharW))
+                `P.bindFromLiftedToByteArrayIntInt` \_ ->
+                (goCopyAndEscape (ix + 1))
+          _ ->
+            (Unsafe.unconsume 1)
+            `P.bindFromLiftedToByteArrayIntInt` \_ ->
+            (Utf8.any# IncompleteString)
+            `P.bindFromCharToByteArrayIntInt` \c -> 
+            (P.bindFromLiftedToByteArrayIntInt (P.effect (encodeUtf8Char dst ix (fromIntegral (ord (C# c)) :: Word))) goCopyAndEscape)
+   in goCopyAndEscape 0
 
-encodeUtf8Char :: MutableByteArray s -> Int -> Char -> ST s Int
-encodeUtf8Char !marr !ix !c
-  | c < '\128' = do
-      PM.writeByteArray marr ix (c2w c)
+-- This is copy of encodeUtf8Char that only expects characters in the basic
+-- multilingual plane.
+encodeUtf8CharBmp :: MutableByteArray s -> Int -> Word -> ST s Int
+encodeUtf8CharBmp !marr !ix !c
+  | c < 128 = do
+      PM.writeByteArray marr ix (fromIntegral c :: Word8)
       pure (ix + 1)
-  | c < '\x0800' = do
+  | c < 0x0800 = do
       PM.writeByteArray
         marr
         ix
-        (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 6 .|. 0b11000000))
+        (fromIntegral @Word @Word8 (unsafeShiftR c 6 .|. 0b11000000))
       PM.writeByteArray
         marr
         (ix + 1)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (ord c))))
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 c)))
       pure (ix + 2)
-  | c <= '\xffff' = do
+  | otherwise = do
       PM.writeByteArray
         marr
         ix
-        (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 12 .|. 0b11100000))
+        (fromIntegral @Word @Word8 (unsafeShiftR c 12 .|. 0b11100000))
       PM.writeByteArray
         marr
         (ix + 1)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 6))))
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 (unsafeShiftR c 6))))
       PM.writeByteArray
         marr
         (ix + 2)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (ord c))))
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 c)))
+      pure (ix + 3)
+
+-- Note: the third argument is actually a character. This function used to
+-- accept a Char argument, but it was rewritten to help get rid of chr#
+-- and ord# in GHC core.
+encodeUtf8Char :: MutableByteArray s -> Int -> Word -> ST s Int
+encodeUtf8Char !marr !ix !c
+  | c < 128 = do
+      PM.writeByteArray marr ix (fromIntegral c :: Word8)
+      pure (ix + 1)
+  | c < 0x0800 = do
+      PM.writeByteArray
+        marr
+        ix
+        (fromIntegral @Word @Word8 (unsafeShiftR c 6 .|. 0b11000000))
+      PM.writeByteArray
+        marr
+        (ix + 1)
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 c)))
+      pure (ix + 2)
+  | c <= 0xffff = do
+      PM.writeByteArray
+        marr
+        ix
+        (fromIntegral @Word @Word8 (unsafeShiftR c 12 .|. 0b11100000))
+      PM.writeByteArray
+        marr
+        (ix + 1)
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 (unsafeShiftR c 6))))
+      PM.writeByteArray
+        marr
+        (ix + 2)
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 c)))
       pure (ix + 3)
   | otherwise = do
       PM.writeByteArray
         marr
         ix
-        (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 18 .|. 0b11110000))
+        (fromIntegral @Word @Word8 (unsafeShiftR c 18 .|. 0b11110000))
       PM.writeByteArray
         marr
         (ix + 1)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 12))))
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 (unsafeShiftR c 12))))
       PM.writeByteArray
         marr
         (ix + 2)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (unsafeShiftR (ord c) 6))))
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 (unsafeShiftR c 6))))
       PM.writeByteArray
         marr
         (ix + 3)
-        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Int @Word8 (ord c))))
+        (0b10000000 .|. (0b00111111 .&. (fromIntegral @Word @Word8 c)))
       pure (ix + 4)
 
 byteArrayToShortByteString :: ByteArray -> BSS.ShortByteString
+{-# inline byteArrayToShortByteString #-}
 byteArrayToShortByteString (PM.ByteArray x) = BSS.SBS x
 
--- Precondition: Not in the range [U+D800 .. U+DFFF]
-w16ToChar :: Word16 -> Char
-w16ToChar (GHC.Word.Compat.W16# w) = C# (chr# (word2Int# w))
-
 -- | Infix pattern synonym for 'Member'.
-pattern (:->) :: ShortText -> Value -> Member
+pattern (:->) :: Text -> Value -> Member
 pattern key :-> value = Member {key, value}
 
 {- | Construct a JSON array from a list of JSON values.
@@ -1051,11 +1136,11 @@ int = Json.Number . SCI.fromInt
 
 text :: Text -> Json.Value
 {-# INLINE text #-}
-text = Json.String . TS.fromText
+text = Json.String
 
 shortText :: ShortText -> Json.Value
 {-# INLINE shortText #-}
-shortText = String
+shortText = String . TS.toText
 
 bool :: Prelude.Bool -> Json.Value
 {-# INLINE bool #-}
@@ -1091,14 +1176,14 @@ listToJsonValue :: ToValue a => [a] -> Value
 listToJsonValue xs = runST $ do
   let len = List.length xs
   dst <- PM.newSmallArray len Null
-  let go !ix ys = case ys of
+  let goListToJsonValue !ix ys = case ys of
         [] -> do
           dst' <- PM.unsafeFreezeSmallArray dst
           pure (Array dst')
         z : zs -> do
           PM.writeSmallArray dst ix $! toValue z
-          go (ix + 1) zs
-  go 0 xs
+          goListToJsonValue (ix + 1) zs
+  goListToJsonValue 0 xs
 
 instance (ToValue a) => ToValue [a] where
   {-# inline toValue #-}

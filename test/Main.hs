@@ -28,6 +28,7 @@ import qualified Data.ByteString as BS
 import qualified Data.Aeson.Key as Key
 import qualified Data.Aeson.KeyMap as M
 import qualified Data.Number.Scientific as SCI
+import qualified Data.Text as T
 import qualified Data.Text.Short as TS
 import qualified GHC.Exts as Exts
 import qualified Json as J
@@ -256,10 +257,10 @@ tests = testGroup "Tests"
   ]
 
 jsonFromPrintableStrings :: [QC.PrintableString] -> J.Value
-jsonFromPrintableStrings xs = J.Array (Exts.fromList (map (J.String . TS.pack . QC.getPrintableString) xs))
+jsonFromPrintableStrings xs = J.Array (Exts.fromList (map (J.String . T.pack . QC.getPrintableString) xs))
 
 jsonFromAsciiStrings :: [QC.ASCIIString] -> J.Value
-jsonFromAsciiStrings xs = J.Array (Exts.fromList (map (J.String . TS.pack . QC.getASCIIString) xs))
+jsonFromAsciiStrings xs = J.Array (Exts.fromList (map (J.String . T.pack . QC.getASCIIString) xs))
 
 toBadSci :: SCI.Scientific -> Scientific
 toBadSci = SCI.withExposed
@@ -271,10 +272,10 @@ toAesonValue = \case
   J.True -> AE.Bool True
   J.False -> AE.Bool False
   J.Null -> AE.Null
-  J.String t -> AE.String (TS.toText t)
+  J.String t -> AE.String t
   J.Number n -> AE.Number (toBadSci n)
   J.Object mbrs -> AE.Object $ foldr
-    (\(J.Member key val) hm -> M.insert (Key.fromShortText key) (toAesonValue val) hm)
+    (\(J.Member key val) hm -> M.insert (Key.fromText key) (toAesonValue val) hm)
     M.empty mbrs
   J.Array vals -> AE.Array $ Exts.fromList $ foldr
     (\x xs -> toAesonValue x : xs) [] vals

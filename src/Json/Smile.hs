@@ -59,10 +59,12 @@ import GHC.Word (Word (..))
 import Json (Member (..), Value (..))
 import Numeric.Natural (Natural)
 import System.IO.Unsafe (unsafeDupablePerformIO)
+import Data.Text.Internal (Text(Text))
 
 import qualified Arithmetic.Nat as Nat
 import qualified Data.ByteString.Short as SBS
 import qualified Data.Bytes as Bytes
+import qualified Data.Bytes.Text.Utf8 as Utf8
 import qualified Data.Bytes.Builder as B
 import qualified Data.Bytes.Builder.Bounded as Bounded
 import qualified Data.Bytes.Builder.Bounded.Unsafe as Unsafe
@@ -72,6 +74,7 @@ import qualified GHC.Exts as Exts
 import qualified GHC.Num.BigNat as BN
 import qualified GHC.Num.Integer as Integer
 import qualified Prelude
+import qualified Data.Text as Text
 
 {- | Encode a Json 'Value' to the Smile binary format.
 This encoder does not produce backreferences.
@@ -261,31 +264,31 @@ encodeAsciiString !str
   n = SBS.length (TS.toShortByteString str)
 
 -- | Encode a string.
-encodeString :: ShortText -> Builder
-encodeString !str = case SBS.length (TS.toShortByteString str) of
+encodeString :: Text -> Builder
+encodeString str@(Text _ _ n) = case n of
   0 -> B.word8 0x20
-  n -> case TS.isAscii str of
+  _ -> case Text.isAscii str of
     Prelude.True
-      | n <= 64 -> B.copyCons (0x40 + fromIntegral (n - 1)) (Bytes.fromShortByteString (TS.toShortByteString str))
-      | otherwise -> B.word8 0xe0 <> B.shortTextUtf8 str <> B.word8 0xFC
+      | n <= 64 -> B.copyCons (0x40 + fromIntegral (n - 1)) (Utf8.fromText str)
+      | otherwise -> B.word8 0xe0 <> B.textUtf8 str <> B.word8 0xFC
     Prelude.False
-      | n <= 65 -> B.copyCons (0x80 + fromIntegral (n - 2)) (Bytes.fromShortByteString (TS.toShortByteString str))
-      | otherwise -> B.word8 0xE4 <> B.shortTextUtf8 str <> B.word8 0xFC
+      | n <= 65 -> B.copyCons (0x80 + fromIntegral (n - 2)) (Utf8.fromText str)
+      | otherwise -> B.word8 0xE4 <> B.textUtf8 str <> B.word8 0xFC
 
 -- | Encode a key.
-encodeKey :: ShortText -> Builder
-encodeKey !str = case SBS.length (TS.toShortByteString str) of
+encodeKey :: Text -> Builder
+encodeKey str@(Text _ _ n) = case n of
   0 -> B.word8 0x20
-  n
+  _
     | n <= 64
-        && TS.isAscii str
+        && Text.isAscii str
     , w8 <- fromIntegral @Int @Word8 (n - 1) ->
-        B.copyCons (0x80 + w8) (Bytes.fromShortByteString (TS.toShortByteString str))
-  n
+        B.copyCons (0x80 + w8) (Utf8.fromText str)
+  _
     | n < 56
     , w8 <- fromIntegral @Int @Word8 (n - 2) ->
-        B.copyCons (0xC0 + w8) (Bytes.fromShortByteString (TS.toShortByteString str))
-    | otherwise -> B.word8 0x34 <> B.shortTextUtf8 str <> B.word8 0xFC
+        B.copyCons (0xC0 + w8) (Utf8.fromText str)
+    | otherwise -> B.word8 0x34 <> B.textUtf8 str <> B.word8 0xFC
 
 {- | Encode a key in which all characters are ASCII. This precondition
 is not checked. Resulting output will be corrupt if this condition

@@ -1,5 +1,13 @@
 # Revision history for json-syntax
 
+## 0.3.0.0 -- 2025-07-14
+
+* Switch from ShortText to Text. In many cases, this makes it possible for the
+  resulting Value to share the input byte array instead of allocating additional
+  memory.
+* Get rid of word-compat. Require new GHC instead.
+* Optimize decoding. Time for `json/twitter/100/decode` drops from 190us to 150us.
+
 ## 0.2.7.2 -- 2024-02-07
 
 * Fix build with GHC 9.8.

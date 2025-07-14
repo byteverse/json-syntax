@@ -12,19 +12,21 @@ module Json.Flatten
 import Control.Monad.ST (ST)
 import Control.Monad.ST.Run (runByteArrayST)
 import Data.Builder.Catenable (Builder)
-import qualified Data.Builder.Catenable as Builder
 import Data.ByteString.Short.Internal (ShortByteString (SBS))
+import Data.Primitive (ByteArray (ByteArray), MutableByteArray, SmallArray)
+import Data.Text.Short (ShortText)
+import Data.Word (Word8)
+import Json (Member (Member))
+import Data.Text.Internal (Text(Text))
+
+import qualified Data.Builder.Catenable as Builder
 import qualified Data.Bytes as Bytes
 import qualified Data.Bytes.Text.Utf8 as Utf8
 import qualified Data.Chunks as Chunks
-import Data.Primitive (ByteArray (ByteArray), MutableByteArray, SmallArray)
 import qualified Data.Primitive as PM
 import qualified Data.Primitive.Contiguous as C
-import Data.Text.Short (ShortText)
 import qualified Data.Text.Short as TS
 import qualified Data.Text.Short.Unsafe as TS
-import Data.Word (Word8)
-import Json (Member (Member))
 import qualified Json
 
 {- | Flatten a json value, recursively descending into objects and joining
@@ -58,14 +60,14 @@ flatten c v = case c of
   _ -> errorWithoutStackTrace "Json.Flatten.flatten: only period is supported"
 
 -- built backwards
-data ShortTexts
-  = ShortTextsCons !ShortText !ShortTexts
-  | ShortTextsBase !ShortText
+data Texts
+  = TextsCons !Text !Texts
+  | TextsBase !Text
 
 flattenPeriod :: Json.Value -> Json.Value
 flattenPeriod x = case x of
   Json.Object mbrs ->
-    let bldr = foldMap (\Member {key, value} -> flattenPrefix (ShortTextsBase key) value) mbrs
+    let bldr = foldMap (\Member {key, value} -> flattenPrefix (TextsBase key) value) mbrs
         chunks = Builder.run bldr
         result = Chunks.concat chunks
      in Json.Object result
@@ -73,53 +75,45 @@ flattenPeriod x = case x of
   _ -> x
 
 flattenPrefix ::
-  ShortTexts -> -- context accumulator
+  Texts -> -- context accumulator
   Json.Value ->
   Builder Json.Member
 flattenPrefix !pre x = case x of
   Json.Object mbrs -> flattenObject pre mbrs
   _ ->
     let !a = flattenPeriod x
-        !k = runShortTexts pre
+        !k = TS.toText $! runTexts pre
         !mbr = Json.Member {key = k, value = a}
      in Builder.Cons mbr Builder.Empty
 
-flattenObject :: ShortTexts -> SmallArray Json.Member -> Builder Json.Member
+flattenObject :: Texts -> SmallArray Json.Member -> Builder Json.Member
 flattenObject !pre !mbrs =
   foldMap
-    ( \Member {key, value} -> flattenPrefix (ShortTextsCons key pre) value
+    ( \Member {key, value} -> flattenPrefix (TextsCons key pre) value
     )
     mbrs
 
-runShortTexts :: ShortTexts -> ShortText
-runShortTexts !ts0 = go 0 ts0
+runTexts :: Texts -> ShortText
+runTexts !ts0 = go 0 ts0
  where
-  paste :: MutableByteArray s -> Int -> ShortTexts -> ST s ByteArray
-  paste !dst !ix (ShortTextsBase t) =
-    let len = Bytes.length (Utf8.fromShortText t)
-     in case ix - len of
-          0 -> do
-            PM.copyByteArray dst 0 (st2ba t) 0 len
-            PM.unsafeFreezeByteArray dst
-          _ -> errorWithoutStackTrace "Json.Flatten.runShortTexts: implementation mistake"
-  paste !dst !ix (ShortTextsCons t ts) = do
-    let !len = Bytes.length (Utf8.fromShortText t)
+  paste :: MutableByteArray s -> Int -> Texts -> ST s ByteArray
+  paste !dst !ix (TextsBase (Text arr off len)) = case ix - len of
+    0 -> do
+      PM.copyByteArray dst 0 arr off len
+      PM.unsafeFreezeByteArray dst
+    _ -> errorWithoutStackTrace "Json.Flatten.runTexts: implementation mistake"
+  paste !dst !ix (TextsCons (Text arr off len) ts) = do
     let !ixNext = ix - len
-    PM.copyByteArray dst ixNext (st2ba t) 0 len
+    PM.copyByteArray dst ixNext arr off len
     let !ixPred = ixNext - 1
     PM.writeByteArray dst ixPred (0x2E :: Word8)
     paste dst ixPred ts
-  go :: Int -> ShortTexts -> ShortText
-  go !byteLenAcc (ShortTextsCons t ts) =
-    go (Bytes.length (Utf8.fromShortText t) + byteLenAcc + 1) ts
-  go !byteLenAcc (ShortTextsBase t) =
+  go :: Int -> Texts -> ShortText
+  go !byteLenAcc (TextsCons t ts) =
+    go (Bytes.length (Utf8.fromText t) + byteLenAcc + 1) ts
+  go !byteLenAcc (TextsBase t) =
     let !(ByteArray r) = runByteArrayST $ do
-          let totalLen = Bytes.length (Utf8.fromShortText t) + byteLenAcc
+          let totalLen = Bytes.length (Utf8.fromText t) + byteLenAcc
           dst <- PM.newByteArray totalLen
           paste dst totalLen ts0
      in TS.fromShortByteStringUnsafe (SBS r)
-
-st2ba :: ShortText -> ByteArray
-{-# INLINE st2ba #-}
-st2ba t = case TS.toShortByteString t of
-  SBS x -> ByteArray x

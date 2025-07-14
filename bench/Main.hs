@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -6,6 +7,7 @@ import Gauge.Main (bench, bgroup, defaultMain, whnf)
 import Metrics1024 (encodedMetrics1024)
 import Twitter100 (byteStringTwitter100, encodedTwitter100)
 import Url100 (byteStringUrl100, encodedUrl100)
+import Data.Bytes (Bytes)
 
 import qualified Data.Aeson as Aeson
 import qualified Data.ByteString.Lazy as LBS
@@ -29,6 +31,7 @@ main = do
   aesonValueTwitter100 <- case Aeson.decodeStrict' byteStringTwitter100 of
     Nothing -> fail "aeson failed to decode twitter-100"
     Just (v :: Aeson.Value) -> pure v
+  let !encodedCompactTwitter100 = Chunks.concat (BLDR.run 128 (J.encode valueTwitter100)) :: Bytes
   defaultMain
     [ bgroup
         "json"
@@ -48,6 +51,14 @@ main = do
                     whnf
                       (\v -> Chunks.length (BLDR.run 128 (Smile.encode v)))
                       valueTwitter100
+                ]
+            ]
+        , bgroup
+            "twitter-compact"
+            [ bgroup
+                "100"
+                [ bench "decode" $
+                    whnf J.decode encodedCompactTwitter100
                 ]
             ]
         , bgroup
