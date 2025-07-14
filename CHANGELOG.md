@@ -1,6 +1,6 @@
 # Revision history for json-syntax
 
-## 0.3.0.1 -- 2025-07-14
+## 0.3.0.2 -- 2025-07-14
 
 * Switch from ShortText to Text. In many cases, this makes it possible for the
   resulting Value to share the input byte array instead of allocating additional

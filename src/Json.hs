@@ -83,7 +83,7 @@ import Control.Monad.ST (ST, runST)
 import Control.Monad.ST.Run (runSmallArrayST)
 import Control.Monad.Trans.Class (lift)
 import Control.Monad.Trans.Except (except, runExceptT)
-import Data.Bits (unsafeShiftR, (.&.), (.|.), xor)
+import Data.Bits (unsafeShiftR, (.&.), (.|.))
 import Data.Builder.ST (Builder)
 import Data.Bytes.Chunks (Chunks)
 import Data.Bytes.Parser (Parser)
@@ -94,12 +94,12 @@ import Data.Number.Scientific (Scientific)
 import Data.Primitive (Array, ByteArray (ByteArray), MutableByteArray, Prim, PrimArray, SmallArray)
 import Data.Text.Internal (Text(Text))
 import Data.Text.Short (ShortText)
-import GHC.Exts (Char (C#), Int (I#), chr#, gtWord#, ltWord#, word2Int#, minusWord#)
-import GHC.Exts (Int#, ByteArray#, word8ToWord#, word16ToWord#)
+import GHC.Exts (Char (C#), Int (I#), ltWord#, minusWord#)
+import GHC.Exts (Int#, ByteArray#, word8ToWord#)
 import GHC.Exts (RuntimeRep(IntRep,TupleRep,BoxedRep), Levity(Unlifted))
 import GHC.Exts (and#, xor#)
 import GHC.Int (Int16, Int32, Int64, Int8)
-import GHC.Word (Word16(W16#), Word32, Word64, Word8(W8#), Word(W#))
+import GHC.Word (Word16, Word32, Word64, Word8(W8#), Word(W#))
 
 import qualified Data.Builder.ST as B
 import qualified Data.ByteString.Short.Internal as BSS
@@ -115,11 +115,9 @@ import qualified Data.List as List
 import qualified Data.Number.Scientific as SCI
 import qualified Data.Primitive as PM
 import qualified Data.Primitive.Contiguous as Contiguous
-import qualified Data.Text
 import qualified Data.Text.Short as TS
 import qualified Data.Text.Short.Unsafe as TS
 import qualified Prelude
-import qualified Data.Bytes.Parser.Rebindable as RB
 
 {- | The JSON syntax tree described by the ABNF in RFC 7159. Notable
 design decisions include:
@@ -552,9 +550,10 @@ copyAndEscape# !maxLen =
           0x22 ->
             (P.effect (PM.unsafeFreezeByteArray =<< PM.resizeMutableByteArray dst ix))
             `P.bindFromLiftedToByteArrayIntInt` \str ->
-            P.pureByteArrayIntInt $ case byteArrayToShortByteString str of
-              BSS.SBS str' -> -- error ("Escaped string: " ++ Data.Text.unpack (Text (ByteArray str') 0 (I# ix#)))
-                (# str', 0#, ix# #)
+            P.pureByteArrayIntInt
+              ( case byteArrayToShortByteString str of
+                  BSS.SBS str' -> (# str', 0#, ix# #)
+              )
           _ | theCharW >= 0x20, theCharW < 127 -> 
                 (P.effect (PM.writeByteArray dst ix theCharW))
                 `P.bindFromLiftedToByteArrayIntInt` \_ ->
